@@ -1,0 +1,19 @@
+aws_region = "us-west-2"
+
+cluster_name = "korda-rag-stage"
+namespace    = "rag-stage"
+
+cpu_node_instance_types = ["m7i.2xlarge"]
+gpu_node_instance_types = ["g5.2xlarge"]
+
+cpu_min_size     = 2
+cpu_desired_size = 4
+cpu_max_size     = 8
+
+gpu_min_size     = 1
+gpu_desired_size = 1
+gpu_max_size     = 3
+
+common_tags = {
+  Owner = "platform-team"
+}

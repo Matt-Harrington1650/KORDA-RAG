@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: korda-rag-stage
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: korda-rag
+  source:
+    repoURL: https://github.com/Matt-Harrington1650/KORDA-RAG.git
+    targetRevision: HEAD
+    path: deploy/helm/nvidia-blueprint-rag
+    helm:
+      releaseName: rag
+      valueFiles:
+        - ../overlays/stage.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: rag-stage
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true

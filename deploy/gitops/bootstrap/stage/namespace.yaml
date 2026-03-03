@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rag-stage
+  labels:
+    app.kubernetes.io/part-of: korda-rag
+    environment: stage
+    compliance-tier: regulated-ready

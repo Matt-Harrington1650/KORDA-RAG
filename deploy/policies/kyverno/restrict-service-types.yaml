@@ -1,0 +1,29 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: korda-restrict-service-types
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: deny-public-service-types
+      match:
+        any:
+          - resources:
+              kinds:
+                - Service
+              namespaces:
+                - rag-dev
+                - rag-stage
+                - rag-prod
+      validate:
+        message: "Only ClusterIP services are allowed in KORDA namespaces."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.spec.type || 'ClusterIP' }}"
+                operator: AnyIn
+                value:
+                  - LoadBalancer
+                  - NodePort
+                  - ExternalName

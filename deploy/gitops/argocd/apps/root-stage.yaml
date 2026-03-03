@@ -1,0 +1,16 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: korda-rag-root-stage
+  namespace: argocd
+spec:
+  project: korda-rag
+  source:
+    repoURL: https://github.com/Matt-Harrington1650/KORDA-RAG.git
+    targetRevision: HEAD
+    path: deploy/gitops/argocd/apps/stage
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd

@@ -298,6 +298,13 @@ ingestor-server:
     type: ClusterIP
     port: 8082
 
+  # -- ServiceAccount for ingestor-server (for IRSA support)
+  serviceAccount:
+    create: true
+    name: ""
+    automount: true
+    annotations: {}
+
   server:
     workers: 1
 

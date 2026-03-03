@@ -1,0 +1,113 @@
+# Environment: stage
+
+service:
+  type: ClusterIP
+
+serviceAccount:
+  create: true
+  annotations:
+    eks.amazonaws.com/role-arn: "<RAG_SERVER_IRSA_ROLE_ARN>"
+
+imagePullSecret:
+  create: false
+  name: ngc-secret
+
+ngcApiSecret:
+  create: false
+  name: ngc-api
+
+apiKeysSecret:
+  create: false
+  existingSecret: rag-api-keys
+
+nodeSelector:
+  workload: general
+
+envVars:
+  APP_LLM_SERVERURL: ""
+  APP_QUERYREWRITER_SERVERURL: ""
+  APP_FILTEREXPRESSIONGENERATOR_SERVERURL: ""
+  REFLECTION_LLM_SERVERURL: ""
+  SUMMARY_LLM_SERVERURL: ""
+  APP_EMBEDDINGS_SERVERURL: "https://integrate.api.nvidia.com/v1"
+  APP_RANKING_SERVERURL: ""
+  APP_VLM_SERVERURL: ""
+  ENABLE_VLM_INFERENCE: "true"
+  VLM_TO_LLM_FALLBACK: "true"
+  ENABLE_QUERY_DECOMPOSITION: "true"
+  MAX_RECURSION_DEPTH: "2"
+  ENABLE_REFLECTION: "true"
+  MAX_REFLECTION_LOOP: "2"
+  APP_TRACING_ENABLED: "true"
+  APP_VECTORSTORE_ENABLEGPUSEARCH: "True"
+
+ingestor-server:
+  service:
+    type: ClusterIP
+  nodeSelector:
+    workload: general
+  serviceAccount:
+    create: true
+    name: ingestor-server
+    annotations:
+      eks.amazonaws.com/role-arn: "<INGESTOR_SERVER_IRSA_ROLE_ARN>"
+  envVars:
+    APP_EMBEDDINGS_SERVERURL: "https://integrate.api.nvidia.com/v1"
+    SUMMARY_LLM_SERVERURL: ""
+    APP_NVINGEST_EXTRACTINFOGRAPHICS: "True"
+    APP_NVINGEST_EXTRACTIMAGES: "True"
+    APP_NVINGEST_EXTRACTTABLES: "True"
+    APP_NVINGEST_EXTRACTCHARTS: "True"
+    APP_NVINGEST_CAPTIONENDPOINTURL: "https://integrate.api.nvidia.com/v1/chat/completions"
+    ENABLE_REDIS_BACKEND: "True"
+
+frontend:
+  service:
+    type: ClusterIP
+
+nimOperator:
+  nim-llm:
+    enabled: false
+  nvidia-nim-llama-32-nv-embedqa-1b-v2:
+    enabled: false
+  nvidia-nim-llama-32-nv-rerankqa-1b-v2:
+    enabled: false
+  nim-vlm:
+    enabled: false
+
+nv-ingest:
+  envVars:
+    EMBEDDING_NIM_ENDPOINT: "https://integrate.api.nvidia.com/v1"
+    OCR_HTTP_ENDPOINT: "https://ai.api.nvidia.com/v1/cv/nvidia/nemoretriever-ocr"
+    OCR_INFER_PROTOCOL: "http"
+    YOLOX_HTTP_ENDPOINT: "https://ai.api.nvidia.com/v1/cv/nvidia/nemoretriever-page-elements-v3"
+    YOLOX_INFER_PROTOCOL: "http"
+    YOLOX_GRAPHIC_ELEMENTS_HTTP_ENDPOINT: "https://ai.api.nvidia.com/v1/cv/nvidia/nemoretriever-graphic-elements-v1"
+    YOLOX_GRAPHIC_ELEMENTS_INFER_PROTOCOL: "http"
+    YOLOX_TABLE_STRUCTURE_HTTP_ENDPOINT: "https://ai.api.nvidia.com/v1/cv/nvidia/nemoretriever-table-structure-v1"
+    YOLOX_TABLE_STRUCTURE_INFER_PROTOCOL: "http"
+    VLM_CAPTION_ENDPOINT: "https://integrate.api.nvidia.com/v1/chat/completions"
+    READY_CHECK_ALL_COMPONENTS: "False"
+    COMPONENTS_TO_READY_CHECK: ""
+  milvus:
+    standalone:
+      nodeSelector:
+        workload: gpu
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: gpu
+          effect: NoSchedule
+  nimOperator:
+    nemoretriever_ocr_v1:
+      enabled: false
+    graphic_elements:
+      enabled: false
+    page_elements:
+      enabled: false
+    table_structure:
+      enabled: false
+    nemotron_parse:
+      enabled: false
+    audio:
+      enabled: false

@@ -302,3 +302,19 @@ After you deploy the RAG blueprint, you can customize it for your use cases.
    API - Ingestor Server Schema <api-ingestor.md>
    API - RAG Server Schema <api-rag.md>
 ```
+
+
+```{toctree}
+   :name: KORDA Cloud Operations
+   :caption: KORDA Cloud Operations
+   :maxdepth: 1
+   :hidden:
+
+   Housekeeping Checklist <cloud/housekeeping-checklist.md>
+   AWS EKS Implementation Guide <cloud/aws-eks-implementation.md>
+   Data Classification Matrix <operations/data-classification-matrix.md>
+   SLO and Error Budget <operations/slo-and-error-budget.md>
+   Incident Runbooks <operations/incident-runbooks.md>
+   Disaster Recovery Playbook <operations/dr-playbook.md>
+   Promotion Gates <operations/promotion-gates.md>
+```

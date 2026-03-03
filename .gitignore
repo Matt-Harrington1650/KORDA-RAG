@@ -81,3 +81,11 @@ cover/
 *.log
 tests/data/
 # Workbench Project Layout
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+**/backend.hcl
+crash.log

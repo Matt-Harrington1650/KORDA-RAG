@@ -1,0 +1,5 @@
+bucket         = "korda-rag-tfstate-usw2"
+key            = "prod/korda-rag.tfstate"
+region         = "us-west-2"
+dynamodb_table = "korda-rag-tf-locks"
+encrypt        = true

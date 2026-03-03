@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: korda-rag
+  namespace: argocd
+spec:
+  description: KORDA RAG private cloud deployment project
+  sourceRepos:
+    - https://github.com/Matt-Harrington1650/KORDA-RAG.git
+    - https://charts.external-secrets.io
+    - https://kyverno.github.io/kyverno
+  destinations:
+    - namespace: argocd
+      server: https://kubernetes.default.svc
+    - namespace: external-secrets
+      server: https://kubernetes.default.svc
+    - namespace: kyverno
+      server: https://kubernetes.default.svc
+    - namespace: rag-dev
+      server: https://kubernetes.default.svc
+    - namespace: rag-stage
+      server: https://kubernetes.default.svc
+    - namespace: rag-prod
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

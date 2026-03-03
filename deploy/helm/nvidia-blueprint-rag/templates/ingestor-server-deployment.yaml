@@ -20,6 +20,10 @@ spec:
         app.kubernetes.io/component: ingestor-server
         {{- include "nvidia-blueprint-rag.selectorLabels" . | nindent 8 }}
     spec:
+      serviceAccountName: {{ if $cfg.serviceAccount.create }}{{ default $cfg.appName $cfg.serviceAccount.name }}{{ else }}{{ default "default" $cfg.serviceAccount.name }}{{ end }}
+      {{- if hasKey $cfg.serviceAccount "automount" }}
+      automountServiceAccountToken: {{ $cfg.serviceAccount.automount }}
+      {{- end }}
       {{- if $cfg.imagePullSecret.name }}
       imagePullSecrets:
         - name: {{ $cfg.imagePullSecret.name }}

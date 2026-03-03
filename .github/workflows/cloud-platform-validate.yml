@@ -1,0 +1,68 @@
+name: Cloud Platform Validate
+
+on:
+  pull_request:
+    paths:
+      - "infra/terraform/**"
+      - "deploy/gitops/**"
+      - "deploy/policies/**"
+      - "deploy/helm/overlays/**"
+      - "scripts/cloud/**"
+      - "docs/cloud/**"
+      - "docs/operations/**"
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - "infra/terraform/**"
+      - "deploy/gitops/**"
+      - "deploy/policies/**"
+      - "deploy/helm/overlays/**"
+      - "scripts/cloud/**"
+
+jobs:
+  terraform:
+    name: Terraform Static Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform fmt check
+        run: terraform fmt -recursive -check infra/terraform
+
+      - name: Terraform validate (dev/stage/prod)
+        run: |
+          for env in dev stage prod; do
+            terraform -chdir=infra/terraform/envs/$env init -backend=false
+            terraform -chdir=infra/terraform/envs/$env validate
+          done
+
+  kubernetes-manifests:
+    name: Kubernetes Manifest Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.30.0
+
+      - name: Validate kustomization bundles
+        run: |
+          kubectl kustomize deploy/gitops/bootstrap/dev > /dev/null
+          kubectl kustomize deploy/gitops/bootstrap/dev-secrets > /dev/null
+          kubectl kustomize deploy/gitops/bootstrap/stage > /dev/null
+          kubectl kustomize deploy/gitops/bootstrap/stage-secrets > /dev/null
+          kubectl kustomize deploy/gitops/bootstrap/prod > /dev/null
+          kubectl kustomize deploy/gitops/bootstrap/prod-secrets > /dev/null
+          kubectl kustomize deploy/policies/kyverno > /dev/null
+          kubectl kustomize deploy/policies/network/dev > /dev/null
+          kubectl kustomize deploy/policies/network/stage > /dev/null
+          kubectl kustomize deploy/policies/network/prod > /dev/null

@@ -134,6 +134,17 @@ After you deploy the RAG blueprint, you can customize it for your use cases.
 - [Migrate from a Previous Version](migration_guide.md)
 
 
+## KORDA Cloud Operations
+
+- [KORDA Housekeeping Checklist](cloud/housekeeping-checklist.md)
+- [KORDA AWS EKS Implementation Guide](cloud/aws-eks-implementation.md)
+- [Data Classification Matrix](operations/data-classification-matrix.md)
+- [SLO and Error Budget Baseline](operations/slo-and-error-budget.md)
+- [Incident Runbooks](operations/incident-runbooks.md)
+- [Disaster Recovery Playbook](operations/dr-playbook.md)
+- [Promotion Gates](operations/promotion-gates.md)
+
+
 
 ## Reference
 
