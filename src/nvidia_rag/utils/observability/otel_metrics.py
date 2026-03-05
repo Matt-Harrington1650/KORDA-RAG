@@ -37,6 +37,17 @@ class OtelMetrics:
         instruments["api_request_counter"] = meter.create_counter(
             "api_requests_total", description="Total API requests"
         )
+        instruments["strict_validation_counter"] = meter.create_counter(
+            "strict_validation_records_total",
+            description=(
+                "Strict validation records by phase/outcome/error code for ingestion "
+                "fail-closed controls"
+            ),
+        )
+        instruments["metadata_enrichment_counter"] = meter.create_counter(
+            "metadata_enrichment_jobs_total",
+            description="Metadata enrichment job count by status/document class",
+        )
 
         # Token gauges
         instruments["input_token_gauge"] = meter.create_gauge(
@@ -56,6 +67,10 @@ class OtelMetrics:
         instruments["token_usage_histogram"] = meter.create_histogram(
             "token_usage_distribution",
             description="Token usage distribution per request",
+        )
+        instruments["metadata_enrichment_duration_histogram"] = meter.create_histogram(
+            "metadata_enrichment_duration_ms",
+            description="Metadata enrichment runtime in milliseconds",
         )
 
         # Latency histograms
@@ -93,11 +108,16 @@ class OtelMetrics:
 
         # Assign to instance variables
         self.api_request_counter = instruments["api_request_counter"]
+        self.strict_validation_counter = instruments["strict_validation_counter"]
+        self.metadata_enrichment_counter = instruments["metadata_enrichment_counter"]
         self.input_token_gauge = instruments["input_token_gauge"]
         self.output_token_gauge = instruments["output_token_gauge"]
         self.total_token_gauge = instruments["total_token_gauge"]
         self.avg_words_per_chunk_gauge = instruments["avg_words_per_chunk_gauge"]
         self.token_usage_histogram = instruments["token_usage_histogram"]
+        self.metadata_enrichment_duration_histogram = instruments[
+            "metadata_enrichment_duration_histogram"
+        ]
         self.latency_hists = instruments["latency_hists"]
 
         logging.info("OpenTelemetry Metrics Initialized")
@@ -116,12 +136,21 @@ class OtelMetrics:
 
             # Cache OTLP instruments for better performance
             self._otlp_api_request_counter = otlp_instruments["api_request_counter"]
+            self._otlp_strict_validation_counter = otlp_instruments[
+                "strict_validation_counter"
+            ]
+            self._otlp_metadata_enrichment_counter = otlp_instruments[
+                "metadata_enrichment_counter"
+            ]
             self._otlp_input_token_gauge = otlp_instruments["input_token_gauge"]
             self._otlp_output_token_gauge = otlp_instruments["output_token_gauge"]
             self._otlp_total_token_gauge = otlp_instruments["total_token_gauge"]
             self._otlp_token_usage_histogram = otlp_instruments["token_usage_histogram"]
             self._otlp_avg_words_per_chunk_gauge = otlp_instruments[
                 "avg_words_per_chunk_gauge"
+            ]
+            self._otlp_metadata_enrichment_duration_histogram = otlp_instruments[
+                "metadata_enrichment_duration_histogram"
             ]
             self._otlp_latency_hists = otlp_instruments["latency_hists"]
 
@@ -172,6 +201,46 @@ class OtelMetrics:
             # Also update OTLP meter if available (using cached gauge)
             if hasattr(self, "_otlp_avg_words_per_chunk_gauge"):
                 self._otlp_avg_words_per_chunk_gauge.set(avg_words_per_chunk)
+
+    def update_strict_validation_record(
+        self,
+        phase: str,
+        outcome: str,
+        error_code: str = "NONE",
+        document_class: str = "unknown",
+    ):
+        """Track strict-validation pass/fail records with stable labels."""
+        attrs = {
+            "phase": (phase or "unknown").lower(),
+            "outcome": (outcome or "unknown").lower(),
+            "error_code": (error_code or "NONE").upper(),
+            "document_class": (document_class or "unknown").lower(),
+        }
+        self.strict_validation_counter.add(1, attrs)
+        if hasattr(self, "_otlp_strict_validation_counter"):
+            self._otlp_strict_validation_counter.add(1, attrs)
+
+    def update_metadata_enrichment_job(
+        self,
+        status: str,
+        duration_ms: float | None = None,
+        document_class: str = "unknown",
+    ):
+        """Track metadata enrichment jobs and runtime distributions."""
+        attrs = {
+            "status": (status or "unknown").lower(),
+            "document_class": (document_class or "unknown").lower(),
+        }
+        self.metadata_enrichment_counter.add(1, attrs)
+        if hasattr(self, "_otlp_metadata_enrichment_counter"):
+            self._otlp_metadata_enrichment_counter.add(1, attrs)
+
+        if duration_ms is not None:
+            self.metadata_enrichment_duration_histogram.record(duration_ms, attrs)
+            if hasattr(self, "_otlp_metadata_enrichment_duration_histogram"):
+                self._otlp_metadata_enrichment_duration_histogram.record(
+                    duration_ms, attrs
+                )
 
     # ------------------- Latency metrics -------------------
 

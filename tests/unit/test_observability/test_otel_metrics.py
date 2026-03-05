@@ -13,9 +13,11 @@ class FakeHistogram:
     def __init__(self, name: str):
         self.name = name
         self.records: list[float] = []
+        self.attrs: list[dict] = []
 
-    def record(self, value: float):
+    def record(self, value: float, attrs: dict | None = None):
         self.records.append(value)
+        self.attrs.append(attrs or {})
 
 
 class FakeGauge:
@@ -247,6 +249,46 @@ def test_update_latency_metrics_with_otlp(fake_meter):
     # Should update both base meter and OTLP meter
     assert fake_meter.histograms["retrieval_time_ms"].records[-1] == 15.5
     assert otlp_meter.histograms["retrieval_time_ms"].records[-1] == 15.5
+
+
+def test_update_strict_validation_record_with_otlp(fake_meter):
+    """Test strict validation record metrics update base and OTLP meters."""
+    m = OtelMetrics(service_name="ingestor")
+    otlp_meter = FakeMeter()
+
+    class MockOTLPProvider:
+        def get_meter(self, service_name):
+            return otlp_meter
+
+    m.setup_otlp_meter(MockOTLPProvider())
+    m.update_strict_validation_record(
+        phase="metadata",
+        outcome="failure",
+        error_code="METADATA_SCHEMA_VALIDATION_FAILED",
+        document_class="drawing",
+    )
+
+    base_attrs = fake_meter.counters["strict_validation_records_total"].add_calls[-1][1]
+    otlp_attrs = otlp_meter.counters["strict_validation_records_total"].add_calls[-1][1]
+    assert base_attrs["phase"] == "metadata"
+    assert base_attrs["outcome"] == "failure"
+    assert base_attrs["error_code"] == "METADATA_SCHEMA_VALIDATION_FAILED"
+    assert base_attrs["document_class"] == "drawing"
+    assert otlp_attrs == base_attrs
+
+
+def test_update_metadata_enrichment_job_with_duration(fake_meter):
+    """Test metadata enrichment counters and histogram updates."""
+    m = OtelMetrics(service_name="ingestor")
+    m.update_metadata_enrichment_job(
+        status="success", duration_ms=123.0, document_class="datasheet"
+    )
+
+    assert (
+        fake_meter.counters["metadata_enrichment_jobs_total"].add_calls[-1][1]["status"]
+        == "success"
+    )
+    assert fake_meter.histograms["metadata_enrichment_duration_ms"].records[-1] == 123.0
 
 
 def test_update_api_requests_without_method_endpoint(fake_meter):

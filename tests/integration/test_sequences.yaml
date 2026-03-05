@@ -104,3 +104,10 @@ sequences:
     test_numbers: [134, 135, 136, 137, 138, 139, 140, 141]
     pre_sequence: []  # No pre-cleanup needed
     post_sequence: [142]  # Cleanup summary test collection after sequence
+
+  strict_ingestion_smoke:
+    name: "Strict Ingestion Smoke Tests"
+    description: "Validates strict-ingestion response surfaces and cleanup flow."
+    test_numbers: [115, 116]
+    pre_sequence: []
+    post_sequence: [117]

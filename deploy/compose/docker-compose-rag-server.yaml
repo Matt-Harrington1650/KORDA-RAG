@@ -208,6 +208,62 @@ services:
       - "8081"
     shm_size: 5gb
 
+  chat-gateway:
+    container_name: chat-gateway
+    build:
+      context: ../../
+      dockerfile: src/nvidia_rag/chat_gateway/Dockerfile
+    environment:
+      LOGLEVEL: ${LOGLEVEL:-INFO}
+      KORDA_CHAT_RAG_BASE_URL: ${KORDA_CHAT_RAG_BASE_URL:-http://rag-server:8081/v1}
+      KORDA_CHAT_INGESTOR_BASE_URL: ${KORDA_CHAT_INGESTOR_BASE_URL:-http://ingestor-server:8082/v1}
+      KORDA_CHAT_MILVUS_ENDPOINT: ${KORDA_CHAT_MILVUS_ENDPOINT:-http://milvus:19530}
+      KORDA_CHAT_INTAKE_PROFILES_FILE: ${KORDA_CHAT_INTAKE_PROFILES_FILE:-/workspace/deploy/config/korda-intake-profiles.yaml}
+      KORDA_CHAT_TOOL_MANIFEST_FILE: ${KORDA_CHAT_TOOL_MANIFEST_FILE:-/workspace/deploy/config/korda-tool-manifest.yaml}
+      KORDA_CHAT_METADATA_SCHEMA_FILE: ${KORDA_CHAT_METADATA_SCHEMA_FILE:-/workspace/deploy/config/korda-epc-metadata-schema.json}
+      KORDA_CHAT_DEFAULT_COLLECTION_NAME: ${KORDA_CHAT_DEFAULT_COLLECTION_NAME:-korda-epc-default-dev}
+      KORDA_CHAT_COLLECTION_EMBEDDING_DIMENSION: ${KORDA_CHAT_COLLECTION_EMBEDDING_DIMENSION:-2048}
+      KORDA_CHAT_AUTO_STARTUP_BOOTSTRAP: ${KORDA_CHAT_AUTO_STARTUP_BOOTSTRAP:-true}
+      KORDA_CHAT_STARTUP_FAIL_CLOSED: ${KORDA_CHAT_STARTUP_FAIL_CLOSED:-true}
+      KORDA_CHAT_STORE_BACKEND: ${KORDA_CHAT_STORE_BACKEND:-redis}
+      KORDA_CHAT_REDIS_HOST: ${KORDA_CHAT_REDIS_HOST:-redis}
+      KORDA_CHAT_REDIS_PORT: ${KORDA_CHAT_REDIS_PORT:-6379}
+      KORDA_CHAT_REDIS_DB: ${KORDA_CHAT_REDIS_DB:-0}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_DB: ${REDIS_DB:-0}
+    volumes:
+      - ../config:/workspace/deploy/config:ro
+    ports:
+      - "8083:8083"
+    expose:
+      - "8083"
+    depends_on:
+      - rag-server
+
+  intake-connector:
+    container_name: intake-connector
+    build:
+      context: ../../
+      dockerfile: src/nvidia_rag/intake_connector/Dockerfile
+    environment:
+      LOGLEVEL: ${LOGLEVEL:-INFO}
+      KORDA_GATEWAY_BASE_URL: ${KORDA_GATEWAY_BASE_URL:-http://chat-gateway:8083/v1}
+      KORDA_CONNECTOR_CONFIG_FILE: ${KORDA_CONNECTOR_CONFIG_FILE:-/workspace/deploy/config/korda-connectors.yaml}
+      KORDA_CONNECTOR_STATE_FILE: ${KORDA_CONNECTOR_STATE_FILE:-/tmp-data/korda-connector-state.json}
+      KORDA_CONNECTOR_POLL_SECONDS: ${KORDA_CONNECTOR_POLL_SECONDS:-300}
+      KORDA_CONNECTOR_AUTOSTART: ${KORDA_CONNECTOR_AUTOSTART:-true}
+      KORDA_CONNECTOR_WARM_RUN_ON_START: ${KORDA_CONNECTOR_WARM_RUN_ON_START:-true}
+    volumes:
+      - ../config:/workspace/deploy/config:ro
+      - ./volumes/intake-connector:/tmp-data
+    ports:
+      - "8084:8084"
+    expose:
+      - "8084"
+    depends_on:
+      - chat-gateway
+
   # Sample UI container which interacts with APIs exposed by rag-server container
   rag-frontend:
     container_name: rag-frontend
@@ -220,6 +276,7 @@ services:
         # Environment variables for Vite build
         VITE_API_CHAT_URL: ${VITE_API_CHAT_URL:-http://rag-server:8081/v1}
         VITE_API_VDB_URL: ${VITE_API_VDB_URL:-http://ingestor-server:8082/v1}
+        VITE_API_GATEWAY_URL: ${VITE_API_GATEWAY_URL:-http://chat-gateway:8083/v1}
         VITE_MILVUS_URL: http://milvus:19530
         DOWNLOAD_LEGAL_COMPLIANCE: ${DOWNLOAD_LEGAL_COMPLIANCE:-false}
     ports:
@@ -230,9 +287,11 @@ services:
       # Runtime environment variables for Vite
       VITE_API_CHAT_URL: ${VITE_API_CHAT_URL:-http://rag-server:8081/v1}
       VITE_API_VDB_URL: ${VITE_API_VDB_URL:-http://ingestor-server:8082/v1}
+      VITE_API_GATEWAY_URL: ${VITE_API_GATEWAY_URL:-http://chat-gateway:8083/v1}
       VITE_MILVUS_URL: http://milvus:19530
     depends_on:
       - rag-server
+      - chat-gateway
 
 networks:
   default:

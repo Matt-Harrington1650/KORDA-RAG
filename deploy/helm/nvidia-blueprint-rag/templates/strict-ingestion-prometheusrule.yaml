@@ -1,0 +1,80 @@
+{{- if and .Values.strictObservability.enabled .Values.strictObservability.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "nvidia-blueprint-rag.fullname" . }}-strict-validation-alerts
+  labels:
+    {{- include "nvidia-blueprint-rag.labels" . | nindent 4 }}
+    app.kubernetes.io/component: observability
+spec:
+  groups:
+    - name: korda.strict.validation
+      rules:
+        - alert: KordaStrictValidationFailureRateHigh
+          expr: |
+            (
+              sum(rate(strict_validation_records_total{outcome="failure"}[10m]))
+              /
+              clamp_min(sum(rate(strict_validation_records_total[10m])), 0.0001)
+            ) > {{ .Values.strictObservability.prometheusRule.strictFailureRateThreshold }}
+          for: 10m
+          labels:
+            severity: {{ .Values.strictObservability.prometheusRule.severityCritical | quote }}
+            team: {{ .Values.strictObservability.prometheusRule.team | quote }}
+          annotations:
+            summary: Strict validation failure rate exceeds threshold
+            description: |
+              Strict validation failures are above threshold for 10 minutes.
+              Review strict_validation_records_total by phase/error_code and inspect failing corpus slices.
+
+        - alert: KordaStrictValidationErrorCodeSpike
+          expr: |
+            sum by (phase, error_code) (
+              rate(strict_validation_records_total{outcome="failure", error_code!="NONE"}[5m])
+            ) > {{ .Values.strictObservability.prometheusRule.strictErrorCodeSpikeThreshold }}
+          for: 5m
+          labels:
+            severity: {{ .Values.strictObservability.prometheusRule.severityWarning | quote }}
+            team: {{ .Values.strictObservability.prometheusRule.team | quote }}
+          annotations:
+            summary: Strict validation error-code spike detected
+            description: |
+              Strict validation failures spiked for phase {{`{{ $labels.phase }}`}} and error code {{`{{ $labels.error_code }}`}}.
+              Check recent prompt/model/config changes and the affected document classes.
+
+    - name: korda.metadata.enrichment
+      rules:
+        - alert: KordaMetadataEnrichmentFailureRateHigh
+          expr: |
+            (
+              sum(rate(metadata_enrichment_jobs_total{status="failure"}[10m]))
+              /
+              clamp_min(sum(rate(metadata_enrichment_jobs_total[10m])), 0.0001)
+            ) > {{ .Values.strictObservability.prometheusRule.metadataFailureRateThreshold }}
+          for: 10m
+          labels:
+            severity: {{ .Values.strictObservability.prometheusRule.severityWarning | quote }}
+            team: {{ .Values.strictObservability.prometheusRule.team | quote }}
+          annotations:
+            summary: Metadata enrichment failure rate exceeds threshold
+            description: |
+              Metadata enrichment failures are above threshold for 10 minutes.
+              Inspect METADATA_SCHEMA_VALIDATION_FAILED validation errors and enrichment worker logs.
+
+        - alert: KordaMetadataEnrichmentLatencyHigh
+          expr: |
+            (
+              sum(rate(metadata_enrichment_duration_ms_sum[10m]))
+              /
+              clamp_min(sum(rate(metadata_enrichment_duration_ms_count[10m])), 0.0001)
+            ) > {{ .Values.strictObservability.prometheusRule.metadataLatencyMsThreshold }}
+          for: 15m
+          labels:
+            severity: {{ .Values.strictObservability.prometheusRule.severityWarning | quote }}
+            team: {{ .Values.strictObservability.prometheusRule.team | quote }}
+          annotations:
+            summary: Metadata enrichment latency is elevated
+            description: |
+              Average metadata enrichment duration exceeds threshold for 15 minutes.
+              Evaluate model endpoint latency, worker parallelization, and input text sizes.
+{{- end }}

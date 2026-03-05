@@ -1,0 +1,9 @@
+services:
+  milvus:
+    image: milvusdb/milvus:${MILVUS_VERSION:-v2.6.5}
+    environment:
+      KNOWHERE_GPU_MEM_POOL_SIZE: ""
+    deploy:
+      resources:
+        reservations:
+          devices: []

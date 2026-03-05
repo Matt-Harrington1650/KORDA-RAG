@@ -48,6 +48,7 @@ class IngestionStateManager:
 
         self.validation_errors = []
         self.failed_validation_documents = []
+        self.generated_metadata_records = {}
 
         # Batch progress variables
         self.total_documents_completed = 0

@@ -10,6 +10,7 @@ const __dirname = path.dirname(__filename);
 // Use VITE environment variables from Docker, with fallbacks for development
 const CHAT_TARGET = process.env.VITE_API_CHAT_URL || 'http://localhost:8081/v1';
 const VDB_TARGET = process.env.VITE_API_VDB_URL || 'http://localhost:8082/v1';
+const GATEWAY_TARGET = process.env.VITE_API_GATEWAY_URL || 'http://localhost:8083/v1';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -22,6 +23,26 @@ export default defineConfig({
     port: 3000,
     host: true, // Allow external connections
     proxy: {
+      '/api/chat': {
+        target: GATEWAY_TARGET,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+      '/api/intake': {
+        target: GATEWAY_TARGET,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+      '/api/startup': {
+        target: GATEWAY_TARGET,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+      '/api/tools': {
+        target: GATEWAY_TARGET,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
       '/api/generate': {
         target: CHAT_TARGET,
         changeOrigin: true,
@@ -68,6 +89,26 @@ export default defineConfig({
     port: 3000,
     host: true, // Allow external connections for preview mode too
     proxy: {
+      '/api/chat': {
+        target: GATEWAY_TARGET,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+      '/api/intake': {
+        target: GATEWAY_TARGET,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+      '/api/startup': {
+        target: GATEWAY_TARGET,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+      '/api/tools': {
+        target: GATEWAY_TARGET,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
       '/api/generate': {
         target: CHAT_TARGET,
         changeOrigin: true,

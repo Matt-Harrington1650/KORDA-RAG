@@ -52,6 +52,7 @@ ARG VITE_EMBEDDING_MODEL
 ARG VITE_RERANKER_MODEL
 ARG VITE_API_CHAT_URL
 ARG VITE_API_VDB_URL
+ARG VITE_API_GATEWAY_URL
 ARG VITE_MODEL_NAME
 
 ENV NEXT_PUBLIC_MODEL_NAME=${NEXT_PUBLIC_MODEL_NAME}
@@ -59,6 +60,7 @@ ENV VITE_EMBEDDING_MODEL=${VITE_EMBEDDING_MODEL}
 ENV VITE_RERANKER_MODEL=${VITE_RERANKER_MODEL}
 ENV VITE_API_CHAT_URL=${VITE_API_CHAT_URL}
 ENV VITE_API_VDB_URL=${VITE_API_VDB_URL}
+ENV VITE_API_GATEWAY_URL=${VITE_API_GATEWAY_URL}
 ENV VITE_MODEL_NAME=${VITE_MODEL_NAME}
 
 # Copy frontend files to the working directory
@@ -108,7 +110,8 @@ COPY --from=builder /app/frontend/node_modules ./node_modules
 # Expose port
 EXPOSE 3000
 
-# Use simple static server + proxy approach
-# Routes to rag-server (CHAT): /api/generate, /api/summary, /api/configuration
-# Routes to ingestor-server (VDB): all other /api/* endpoints
-CMD ["node", "-e", "const http=require('http');const fs=require('fs');const path=require('path');const {URL}=require('url');const CHAT=process.env.VITE_API_CHAT_URL||'http://rag-server:8081/v1';const VDB=process.env.VITE_API_VDB_URL||'http://ingestor-server:8082/v1';const chatRoutes=['/api/generate','/api/summary','/api/configuration'];const server=http.createServer((req,res)=>{const isChatRoute=chatRoutes.some(r=>req.url.startsWith(r));if(req.url.startsWith('/api/')){const u=new URL(isChatRoute?CHAT:VDB);const opt={hostname:u.hostname,port:u.port,path:req.url.replace('/api',''),method:req.method,headers:{...req.headers,host:u.host}};const pr=http.request(opt,r=>{res.writeHead(r.statusCode,r.headers);r.pipe(res)});pr.on('error',e=>{res.writeHead(500);res.end('Error:'+e.message)});req.pipe(pr)}else{let f=req.url==='/'?'/index.html':req.url;f=path.join('./dist',f);if(!fs.existsSync(f)&&!f.includes('.'))f=path.join('./dist','index.html');fs.readFile(f,(e,d)=>{if(e){res.writeHead(404);res.end('Not found')}else{res.writeHead(200,{'Content-Type':f.endsWith('.html')?'text/html':f.endsWith('.js')?'application/javascript':f.endsWith('.css')?'text/css':'text/plain'});res.end(d)}})}});server.listen(3000,'0.0.0.0',()=>console.log('Server running on port 3000'));"]
+# Use simple static server + proxy approach.
+# Gateway routes: /api/chat, /api/intake, /api/startup, /api/tools
+# Chat routes: /api/generate, /api/summary, /api/configuration
+# Remaining /api/* routes go to ingestor server.
+CMD ["node", "-e", "const http=require('http');const fs=require('fs');const path=require('path');const {URL}=require('url');const CHAT=process.env.VITE_API_CHAT_URL||'http://rag-server:8081/v1';const VDB=process.env.VITE_API_VDB_URL||'http://ingestor-server:8082/v1';const GATEWAY=process.env.VITE_API_GATEWAY_URL||'http://chat-gateway:8083/v1';const chatRoutes=['/api/generate','/api/summary','/api/configuration'];const gatewayRoutes=['/api/chat','/api/intake','/api/startup','/api/tools'];const server=http.createServer((req,res)=>{if(req.url.startsWith('/api/')){const isGatewayRoute=gatewayRoutes.some(r=>req.url.startsWith(r));const isChatRoute=chatRoutes.some(r=>req.url.startsWith(r));const target=isGatewayRoute?GATEWAY:(isChatRoute?CHAT:VDB);const u=new URL(target);const opt={hostname:u.hostname,port:u.port,path:req.url.replace('/api',''),method:req.method,headers:{...req.headers,host:u.host}};const pr=http.request(opt,r=>{res.writeHead(r.statusCode,r.headers);r.pipe(res)});pr.on('error',e=>{res.writeHead(500);res.end('Error:'+e.message)});req.pipe(pr);return;}let f=req.url==='/'?'/index.html':req.url;f=path.join('./dist',f);if(!fs.existsSync(f)&&!f.includes('.'))f=path.join('./dist','index.html');fs.readFile(f,(e,d)=>{if(e){res.writeHead(404);res.end('Not found')}else{res.writeHead(200,{'Content-Type':f.endsWith('.html')?'text/html':f.endsWith('.js')?'application/javascript':f.endsWith('.css')?'text/css':'text/plain'});res.end(d)}})});server.listen(3000,'0.0.0.0',()=>console.log('Server running on port 3000'));"]

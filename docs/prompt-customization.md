@@ -90,6 +90,11 @@ The `prompt.yaml` file contains a set of prompt templates used throughout the RA
 - **Usage:** Used during the document ingestion process when image captioning is enabled. The prompt instructs the vision-language model to describe images in detail, including main subjects, actions, settings, and notable objects or features.
 - **Context:** When documents containing images are ingested, this prompt is applied to generate textual descriptions that can be embedded and searched alongside the document text. The generated captions help improve retrieval accuracy for questions about visual content in the documents.
 
+### 19. `metadata_extraction_prompt`
+- **Purpose:** Produces strict JSON document-level enrichment metadata for post-ingest processing.
+- **Usage:** Intended for optional post-ingest workers that extract project/doc-control/entity metadata into a typed schema for filtering and governance workflows.
+- **Context:** This key is available for custom ingestion pipelines that need deterministic metadata contracts (for example mixed EPC metadata extraction with fail-closed quality gates).
+
 ---
 
 ## Overriding Existing Templates in `prompt.yaml`

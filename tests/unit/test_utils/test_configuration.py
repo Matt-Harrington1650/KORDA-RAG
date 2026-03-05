@@ -932,6 +932,59 @@ class TestNvidiaRAGConfigFileLoading:
 
         assert "confidence_threshold must be between 0.0 and 1.0" in str(exc_info.value)
 
+    def test_ingestion_strict_defaults(self):
+        """Test strict ingestion defaults are available on main config."""
+        config = NvidiaRAGConfig()
+        assert config.ingestion_json_strict_mode is False
+        assert config.ingestion_caption_min_confidence == 0.8
+        assert config.ingestion_summary_min_confidence == 0.85
+        assert config.ingestion_caption_min_confidence_by_artifact == {}
+        assert config.ingestion_summary_min_confidence_by_document_type == {}
+        assert config.ingestion_fail_on_missing_critical is True
+
+    def test_ingestion_confidence_thresholds_must_be_in_range(self):
+        """Test strict ingestion confidence thresholds reject out-of-range values."""
+        with pytest.raises(ValidationError) as exc_info:
+            NvidiaRAGConfig(ingestion_caption_min_confidence=1.5)
+        assert "Ingestion confidence thresholds must be between 0.0 and 1.0" in str(
+            exc_info.value
+        )
+
+    def test_ingestion_per_class_thresholds_parse_json(self):
+        """Test per-class strict confidence maps can be parsed from JSON."""
+        config = NvidiaRAGConfig(
+            ingestion_caption_min_confidence_by_artifact='{"drawing": 0.9, "pid": 0.88}',
+            ingestion_summary_min_confidence_by_document_type={"drawing": 0.91},
+        )
+        assert config.ingestion_caption_min_confidence_by_artifact["drawing"] == 0.9
+        assert config.ingestion_caption_min_confidence_by_artifact["pid"] == 0.88
+        assert (
+            config.ingestion_summary_min_confidence_by_document_type["drawing"] == 0.91
+        )
+
+    def test_ingestion_per_class_thresholds_reject_invalid_values(self):
+        """Test per-class strict confidence maps reject invalid ranges."""
+        with pytest.raises(ValidationError) as exc_info:
+            NvidiaRAGConfig(
+                ingestion_caption_min_confidence_by_artifact={"drawing": 1.2}
+            )
+        assert "must be between 0.0 and 1.0" in str(exc_info.value)
+
+    def test_metadata_enrichment_defaults(self):
+        """Test metadata enrichment defaults are available on metadata config."""
+        config = NvidiaRAGConfig()
+        assert config.metadata.enable_post_ingest_enrichment is False
+        assert config.metadata.max_parallelization == 8
+        assert config.metadata.min_source_quality_score == 0.75
+
+    def test_metadata_enrichment_min_source_quality_score_out_of_range(self):
+        """Test min_source_quality_score validation for metadata enrichment."""
+        with pytest.raises(ValidationError) as exc_info:
+            NvidiaRAGConfig(metadata={"min_source_quality_score": 1.2})
+        assert "min_source_quality_score must be between 0.0 and 1.0" in str(
+            exc_info.value
+        )
+
 
 class TestTextSplitterConfigValidation:
     """Test cases for TextSplitterConfig validation methods."""

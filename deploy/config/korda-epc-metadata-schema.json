@@ -1,0 +1,148 @@
+[
+  {
+    "name": "project_id",
+    "type": "string",
+    "required": false,
+    "description": "Project identifier used by document control",
+    "user_defined": true,
+    "support_dynamic_filtering": true
+  },
+  {
+    "name": "project_name",
+    "type": "string",
+    "required": false,
+    "description": "Project name",
+    "user_defined": true,
+    "support_dynamic_filtering": true
+  },
+  {
+    "name": "discipline",
+    "type": "string",
+    "required": false,
+    "description": "Engineering discipline",
+    "user_defined": true,
+    "support_dynamic_filtering": true
+  },
+  {
+    "name": "document_type",
+    "type": "string",
+    "required": false,
+    "description": "Document class (drawing, pid, datasheet, etc.)",
+    "user_defined": true,
+    "support_dynamic_filtering": true
+  },
+  {
+    "name": "document_number",
+    "type": "string",
+    "required": false,
+    "description": "Document control number",
+    "user_defined": true,
+    "support_dynamic_filtering": true
+  },
+  {
+    "name": "drawing_number",
+    "type": "string",
+    "required": false,
+    "description": "Drawing reference number",
+    "user_defined": true,
+    "support_dynamic_filtering": true
+  },
+  {
+    "name": "revision",
+    "type": "string",
+    "required": false,
+    "description": "Revision identifier",
+    "user_defined": true,
+    "support_dynamic_filtering": true
+  },
+  {
+    "name": "revision_date",
+    "type": "datetime",
+    "required": false,
+    "description": "Revision effective date",
+    "user_defined": true,
+    "support_dynamic_filtering": true
+  },
+  {
+    "name": "asset_tag",
+    "type": "string",
+    "required": false,
+    "description": "Asset tag reference",
+    "user_defined": true,
+    "support_dynamic_filtering": true
+  },
+  {
+    "name": "equipment_tag",
+    "type": "string",
+    "required": false,
+    "description": "Equipment tag reference",
+    "user_defined": true,
+    "support_dynamic_filtering": true
+  },
+  {
+    "name": "line_number",
+    "type": "string",
+    "required": false,
+    "description": "Line number reference",
+    "user_defined": true,
+    "support_dynamic_filtering": true
+  },
+  {
+    "name": "instrument_tag",
+    "type": "string",
+    "required": false,
+    "description": "Instrument tag reference",
+    "user_defined": true,
+    "support_dynamic_filtering": true
+  },
+  {
+    "name": "specification_id",
+    "type": "string",
+    "required": false,
+    "description": "Specification identifier",
+    "user_defined": true,
+    "support_dynamic_filtering": true
+  },
+  {
+    "name": "vendor",
+    "type": "string",
+    "required": false,
+    "description": "Vendor or supplier name",
+    "user_defined": true,
+    "support_dynamic_filtering": true
+  },
+  {
+    "name": "approval_status",
+    "type": "string",
+    "required": false,
+    "description": "Document approval status",
+    "user_defined": true,
+    "support_dynamic_filtering": true
+  },
+  {
+    "name": "codes_standards",
+    "type": "array",
+    "array_type": "string",
+    "required": false,
+    "description": "Codes and standards references captured verbatim",
+    "user_defined": true,
+    "support_dynamic_filtering": true
+  },
+  {
+    "name": "source_quality_score",
+    "type": "float",
+    "required": false,
+    "description": "Extraction quality score from ingestion validators",
+    "user_defined": true,
+    "support_dynamic_filtering": true
+  },
+  {
+    "name": "extraction_warnings",
+    "type": "array",
+    "array_type": "string",
+    "required": false,
+    "description": "Warnings captured during extraction and validation",
+    "user_defined": true,
+    "support_dynamic_filtering": true
+  }
+]

@@ -8,4 +8,6 @@ metadata:
 data:
   prompt.yaml: |-
 {{ .Files.Get "files/prompt.yaml" | indent 4 }}
+  prompt-korda-epc.yaml: |-
+{{ .Files.Get "files/prompt-korda-epc.yaml" | indent 4 }}
 {{- end }}

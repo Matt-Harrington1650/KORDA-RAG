@@ -323,6 +323,11 @@ ingestor-server:
     EXAMPLE_PATH: "src/nvidia_rag/ingestor_server"
     # Absolute path to custom prompt.yaml file
     PROMPT_CONFIG_FILE: "/prompt.yaml"
+    # Strict ingestion JSON contract controls (non-breaking defaults)
+    INGESTION_JSON_STRICT_MODE: "False"
+    INGESTION_CAPTION_MIN_CONFIDENCE: "0.80"
+    INGESTION_SUMMARY_MIN_CONFIDENCE: "0.85"
+    INGESTION_FAIL_ON_MISSING_CRITICAL: "True"
     # === Vector Store Configurations ===
     APP_VECTORSTORE_URL: "http://milvus:19530" # Use "http://rag-eck-elasticsearch-es-http:9200" for elasticsearch
     APP_VECTORSTORE_NAME: "milvus" # supported values: "milvus" or "elasticsearch"
@@ -640,12 +645,34 @@ kube-prometheus-stack:
             - targets:
                 # If the app is in another namespace, use rag-server.<namespace>.svc:8081
                 - rag-server:8081
+        - job_name: ingestor-app
+          scrape_interval: 5s
+          metrics_path: /metrics
+          static_configs:
+            - targets:
+                # If the app is in another namespace, use ingestor-server.<namespace>.svc:8082
+                - ingestor-server:8082
   grafana:
     adminUser: admin
     adminPassword: "admin"
   prometheusOperator:
     crds:
       enabled: false
+
+# -- Strict ingestion observability artifacts (stage/prod)
+strictObservability:
+  enabled: false
+  dashboard:
+    enabled: true
+  prometheusRule:
+    enabled: true
+    team: "platform"
+    severityCritical: "critical"
+    severityWarning: "warning"
+    strictFailureRateThreshold: 0.05
+    strictErrorCodeSpikeThreshold: 0.05
+    metadataFailureRateThreshold: 0.10
+    metadataLatencyMsThreshold: 3000
 
 # -- NIMs (dependencies) configuration
 # subsection: nim-llm

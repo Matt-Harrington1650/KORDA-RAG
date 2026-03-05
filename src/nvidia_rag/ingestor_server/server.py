@@ -47,7 +47,10 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from prometheus_client import CollectorRegistry, generate_latest
+from prometheus_client.multiprocess import MultiProcessCollector
 from pydantic import BaseModel, Field, model_validator
+from starlette.responses import Response
 from starlette.status import HTTP_422_UNPROCESSABLE_ENTITY
 
 from nvidia_rag.ingestor_server.main import Mode, NvidiaRAGIngestor
@@ -111,17 +114,18 @@ EXAMPLE_DIR = "./"
 # Initialize configuration and ingestor
 CONFIG = NvidiaRAGConfig()
 PROMPT_CONFIG_FILE = os.environ.get("PROMPT_CONFIG_FILE", "/prompt.yaml")
-NV_INGEST_INGESTOR = NvidiaRAGIngestor(
-    mode=Mode.SERVER,
-    config=CONFIG,
-    prompts=PROMPT_CONFIG_FILE if Path(PROMPT_CONFIG_FILE).is_file() else None,
-)
 METRICS = None
 if CONFIG.tracing.enabled:
     # Avoid importing tracing instrumentation unless enabled to keep startup lean.
     from nvidia_rag.utils.observability.tracing import instrument
 
     METRICS = instrument(app, CONFIG, service_name="ingestor")
+NV_INGEST_INGESTOR = NvidiaRAGIngestor(
+    mode=Mode.SERVER,
+    config=CONFIG,
+    prompts=PROMPT_CONFIG_FILE if Path(PROMPT_CONFIG_FILE).is_file() else None,
+    metrics_client=METRICS,
+)
 
 
 class SplitOptions(BaseModel):
@@ -629,6 +633,22 @@ async def health_check(check_dependencies: bool = False):
         logger.info("Skipping dependency health checks as check_dependencies=False")
 
     return response
+
+
+@app.get("/metrics")
+def metrics_endpoint():
+    """Exposes aggregated metrics for multi-worker ingestor deployments."""
+    try:
+        registry = CollectorRegistry()
+        MultiProcessCollector(registry)
+        metrics_data = generate_latest(registry)
+        return Response(content=metrics_data, media_type="text/plain")
+    except Exception as e:
+        logger.error(f"Error generating ingestor metrics: {e}")
+        return Response(
+            content=f"# Error generating ingestor metrics: {e}\n",
+            media_type="text/plain",
+        )
 
 
 @trace_function("ingestor.server.parse_json_data", tracer=TRACER)

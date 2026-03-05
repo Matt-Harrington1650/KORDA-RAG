@@ -43,6 +43,7 @@ python -m tests.integration.main --rag-server http://localhost:8081 --ingestor-s
 python -m tests.integration.main --sequence basic
 python -m tests.integration.main --sequence nemo_guardrails
 python -m tests.integration.main --sequence custom_prompt
+python -m tests.integration.main --sequence strict_ingestion_smoke
 
 # List available sequences
 python -m tests.integration.main --list-sequences
@@ -96,6 +97,7 @@ python -m tests.integration.main
 # Run specific sequence
 python -m tests.integration.main --sequence basic
 python -m tests.integration.main --sequence image_captioning
+python -m tests.integration.main --sequence strict_ingestion_smoke
 python -m tests.integration.main --sequence full
 
 # List available sequences (shows pre/post hooks)

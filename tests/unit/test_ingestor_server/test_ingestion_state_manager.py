@@ -58,6 +58,7 @@ class TestIngestionStateManager:
         assert manager.documents_catalog_metadata == []
         assert manager.validation_errors == []
         assert manager.failed_validation_documents == []
+        assert manager.generated_metadata_records == {}
         assert manager.total_documents_completed == 0
         assert manager.total_batches_completed == 0
         assert manager.documents_completed_list == []

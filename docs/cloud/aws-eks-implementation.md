@@ -119,6 +119,26 @@ curl "http://localhost:8081/v1/health?check_dependencies=true"
 .\scripts\cloud\smoke-query.ps1 -CollectionName multimodal_data
 ```
 
+### 5.4 One-command environment checklist
+
+```powershell
+.\scripts\cloud\verify-env-checklist.ps1 -Environment dev
+.\scripts\cloud\verify-env-checklist.ps1 -Environment stage
+.\scripts\cloud\verify-env-checklist.ps1 -Environment prod
+```
+
+Or run all:
+
+```powershell
+.\scripts\cloud\verify-env-checklist.ps1 -Environment all
+```
+
+If unit-test dependencies are not installed in your shell runtime:
+
+```powershell
+.\scripts\cloud\verify-env-checklist.ps1 -Environment all -SkipStrictFixtureTests
+```
+
 ## 6. Promotion Model
 
 - `dev`: auto-sync enabled.
@@ -132,3 +152,12 @@ curl "http://localhost:8081/v1/health?check_dependencies=true"
 - IRSA least privilege: `infra/terraform/modules/irsa`
 - Private-only services: `deploy/helm/overlays/*.yaml` + Kyverno policy
 - Secret externalization: `deploy/gitops/bootstrap/*-secrets`
+
+## 8. Strict Ingestion KPI/Alerts and Calibration
+
+- Import dashboard:
+  - `deploy/config/korda-strict-ingestion-dashboard.json`
+- Apply alert rules:
+  - `kubectl apply -f deploy/config/korda-strict-validation-alerts.yaml`
+- Run threshold calibration:
+  - `python scripts/cloud/calibrate-ingestion-thresholds.py --input-jsonl <labeled_corpus>.jsonl`

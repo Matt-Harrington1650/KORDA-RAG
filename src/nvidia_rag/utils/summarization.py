@@ -24,6 +24,7 @@ This module provides document summarization functionality with:
 """
 
 import asyncio
+import json
 import logging
 import os
 import time
@@ -39,6 +40,12 @@ from transformers import AutoTokenizer
 
 from nvidia_rag.rag_server.response_generator import get_minio_operator_instance
 from nvidia_rag.utils.configuration import NvidiaRAGConfig
+from nvidia_rag.utils.ingestion_validation import (
+    parse_summary_record,
+    record_to_canonical_json,
+    summary_record_to_text,
+    validate_summary_record,
+)
 from nvidia_rag.utils.llm import get_llm, get_prompts
 from nvidia_rag.utils.minio_operator import get_unique_thumbnail_id
 from nvidia_rag.utils.summary_status_handler import SUMMARY_STATUS_HANDLER
@@ -374,6 +381,7 @@ async def generate_document_summaries(
     config: NvidiaRAGConfig | None = None,
     is_shallow: bool = False,
     prompts: dict | None = None,
+    metrics_client: Any | None = None,
 ) -> dict[str, Any]:
     """
     Generate summaries for multiple documents in parallel with global rate limiting.
@@ -450,6 +458,7 @@ async def generate_document_summaries(
             summarization_strategy=summarization_strategy,
             is_shallow=is_shallow,
             prompts=prompts,
+            metrics_client=metrics_client,
         )
         for file_data in file_results
     ]
@@ -495,6 +504,7 @@ async def _process_single_file_summary(
     summarization_strategy: str | None = None,
     is_shallow: bool = False,
     prompts: dict | None = None,
+    metrics_client: Any | None = None,
 ) -> dict[str, Any]:
     """
     Process summary for a single file with global rate limiting.
@@ -556,6 +566,7 @@ async def _process_single_file_summary(
                 config=config,
                 is_shallow=is_shallow,
                 prompts=prompts,
+                metrics_client=metrics_client,
             )
 
             await _store_summary_in_minio(summary_doc)
@@ -735,6 +746,7 @@ async def _generate_single_document_summary(
     summarization_strategy: str | None = None,
     is_shallow: bool = False,
     prompts: dict | None = None,
+    metrics_client: Any | None = None,
 ) -> Document:
     """Generate summary for a single document using configured strategy."""
     file_name = document.metadata.get("filename", "unknown")
@@ -746,15 +758,30 @@ async def _generate_single_document_summary(
 
     if summarization_strategy == "single":
         return await _summarize_single_pass(
-            document, config, progress_callback, is_shallow, prompts=prompts
+            document,
+            config,
+            progress_callback,
+            is_shallow,
+            prompts=prompts,
+            metrics_client=metrics_client,
         )
     elif summarization_strategy == "iterative":
         return await _summarize_iterative(
-            document, config, progress_callback, is_shallow, prompts=prompts
+            document,
+            config,
+            progress_callback,
+            is_shallow,
+            prompts=prompts,
+            metrics_client=metrics_client,
         )
     elif summarization_strategy == "hierarchical":
         return await _summarize_hierarchical(
-            document, config, progress_callback, is_shallow, prompts=prompts
+            document,
+            config,
+            progress_callback,
+            is_shallow,
+            prompts=prompts,
+            metrics_client=metrics_client,
         )
     else:
         raise ValueError(
@@ -763,12 +790,79 @@ async def _generate_single_document_summary(
         )
 
 
+def _apply_strict_summary_contract(
+    raw_summary: str,
+    file_name: str,
+    config: NvidiaRAGConfig,
+    metrics_client: Any | None = None,
+) -> tuple[str, dict[str, Any] | None, str | None]:
+    """Validate summary output contract and return backward-compatible artifacts."""
+    if not config.ingestion_json_strict_mode:
+        return raw_summary, None, None
+
+    try:
+        summary_record = parse_summary_record(raw_summary)
+        normalized_doc_type = (
+            (summary_record.document_identity.document_type or "")
+            .strip()
+            .lower()
+            .replace(" ", "_")
+        )
+        per_doc_thresholds = (
+            config.ingestion_summary_min_confidence_by_document_type or {}
+        )
+        summary_threshold = per_doc_thresholds.get(
+            normalized_doc_type, config.ingestion_summary_min_confidence
+        )
+
+        rule_errors = validate_summary_record(
+            summary_record,
+            min_confidence=summary_threshold,
+            fail_on_missing_critical=config.ingestion_fail_on_missing_critical,
+        )
+        if rule_errors:
+            raise ValueError(
+                f"SummaryRecordV1 fail-closed checks failed for {file_name}: "
+                + "; ".join(rule_errors)
+            )
+    except Exception:
+        if metrics_client is not None:
+            metrics_client.update_strict_validation_record(
+                phase="summary",
+                outcome="failure",
+                error_code="SUMMARY_SCHEMA_VALIDATION_FAILED",
+                document_class="unknown",
+            )
+        raise
+
+    if metrics_client is not None:
+        normalized_doc_type = (
+            (summary_record.document_identity.document_type or "unknown")
+            .strip()
+            .lower()
+            .replace(" ", "_")
+        )
+        metrics_client.update_strict_validation_record(
+            phase="summary",
+            outcome="success",
+            error_code="NONE",
+            document_class=normalized_doc_type or "unknown",
+        )
+
+    return (
+        summary_record_to_text(summary_record),
+        summary_record.model_dump(mode="json"),
+        record_to_canonical_json(summary_record),
+    )
+
+
 async def _summarize_single_pass(
     document: Document,
     config: NvidiaRAGConfig,
     progress_callback: Callable | None = None,
     is_shallow: bool = False,
     prompts: dict | None = None,
+    metrics_client: Any | None = None,
 ) -> Document:
     """Summarize entire document in one pass, truncating if needed."""
     file_name = document.metadata.get("filename", "unknown")
@@ -801,7 +895,14 @@ async def _summarize_single_pass(
     if progress_callback:
         await progress_callback(current=1, total=1)
 
-    document.metadata["summary"] = summary
+    summary_text, summary_record, summary_json = _apply_strict_summary_contract(
+        summary, file_name, config, metrics_client
+    )
+    document.metadata["summary"] = summary_text
+    if summary_record is not None:
+        document.metadata["summary_record"] = summary_record
+    if summary_json is not None:
+        document.metadata["summary_json"] = summary_json
     logger.debug(f"Summary generated for {file_name}: {summary[:100]}...")
 
     return document
@@ -813,6 +914,7 @@ async def _summarize_iterative(
     progress_callback: Callable | None = None,
     is_shallow: bool = False,
     prompts: dict | None = None,
+    metrics_client: Any | None = None,
 ) -> Document:
     """Iterative sequential summarization - processes chunks one by one."""
     file_name = document.metadata.get("filename", "unknown")
@@ -877,7 +979,14 @@ async def _summarize_iterative(
             if progress_callback:
                 await progress_callback(current=i + 1, total=total_chunks)
 
-    document.metadata["summary"] = summary
+    summary_text, summary_record, summary_json = _apply_strict_summary_contract(
+        summary, file_name, config, metrics_client
+    )
+    document.metadata["summary"] = summary_text
+    if summary_record is not None:
+        document.metadata["summary_record"] = summary_record
+    if summary_json is not None:
+        document.metadata["summary_json"] = summary_json
     logger.debug(f"Summary generated for {file_name}: {summary[:100]}...")
 
     return document
@@ -889,6 +998,7 @@ async def _summarize_hierarchical(
     progress_callback: Callable | None = None,
     is_shallow: bool = False,
     prompts: dict | None = None,
+    metrics_client: Any | None = None,
 ) -> Document:
     """Hierarchical parallel summarization with token-based chunking."""
     file_name = document.metadata.get("filename", "unknown")
@@ -903,7 +1013,12 @@ async def _summarize_hierarchical(
     if total_tokens <= max_chunk_tokens:
         logger.info(f"Document fits in one chunk, using single-pass for {file_name}")
         return await _summarize_single_pass(
-            document, config, progress_callback, is_shallow, prompts=prompts
+            document,
+            config,
+            progress_callback,
+            is_shallow,
+            prompts=prompts,
+            metrics_client=metrics_client,
         )
 
     tokenizer = _get_tokenizer(config)
@@ -950,7 +1065,14 @@ async def _summarize_hierarchical(
         level += 1
 
     final_summary = current_summaries[0]
-    document.metadata["summary"] = final_summary
+    summary_text, summary_record, summary_json = _apply_strict_summary_contract(
+        final_summary, file_name, config, metrics_client
+    )
+    document.metadata["summary"] = summary_text
+    if summary_record is not None:
+        document.metadata["summary_record"] = summary_record
+    if summary_json is not None:
+        document.metadata["summary_json"] = summary_json
     logger.debug(f"Summary generated for {file_name}: {final_summary[:100]}...")
 
     return document
@@ -1086,13 +1208,22 @@ async def _store_summary_in_minio(document: Document):
         location=[],
     )
 
-    get_minio_operator_instance().put_payload(
-        payload={
-            "summary": summary,
-            "file_name": file_name,
-            "collection_name": collection_name,
-        },
-        object_name=unique_thumbnail_id,
-    )
+    payload = {
+        "summary": summary,
+        "file_name": file_name,
+        "collection_name": collection_name,
+    }
+    if "summary_record" in document.metadata:
+        payload["summary_record"] = document.metadata["summary_record"]
+    if "summary_json" in document.metadata:
+        payload["summary_json"] = document.metadata["summary_json"]
+
+    # Keep storage payload deterministic for easier diffing and audits.
+    if "summary_record" in payload and "summary_json" not in payload:
+        payload["summary_json"] = json.dumps(
+            payload["summary_record"], sort_keys=True, ensure_ascii=True
+        )
+
+    get_minio_operator_instance().put_payload(payload=payload, object_name=unique_thumbnail_id)
 
     logger.debug(f"Stored summary for {file_name} in MinIO")

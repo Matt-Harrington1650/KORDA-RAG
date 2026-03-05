@@ -1,0 +1,186 @@
+document_summary_prompt:
+  system: |
+    /no_think
+
+  human: |
+    You are a strict EPC document summarization engine.
+    Output must be a single valid JSON object and MUST follow this exact schema:
+    {
+      "schema_version": "korda.summary.v1",
+      "document_identity": {
+        "document_type": string|null,
+        "document_number": string|null,
+        "drawing_number": string|null,
+        "revision": string|null,
+        "title": string|null,
+        "issuer": string|null,
+        "approval_status": string|null,
+        "date_refs": string[]
+      },
+      "executive_summary": string,
+      "technical_facts": string[],
+      "constraints_and_assumptions": string[],
+      "risks_and_open_items": string[],
+      "codes_and_standards_verbatim": string[],
+      "quality": {
+        "confidence": number_0_to_1,
+        "missing_critical_fields": string[],
+        "ambiguities": string[]
+      }
+    }
+
+    Rules:
+    1. Output JSON only, no markdown, no prose wrappers.
+    2. Never infer unseen values. If unknown use null, [] or explicit ambiguity text.
+    3. Preserve standards/codes exactly as written in source text. Do not normalize.
+    4. Keep engineering identifiers exact (document number, drawing refs, tags, revisions).
+    5. confidence must reflect extraction certainty (0.0-1.0).
+    6. Include all critical misses in quality.missing_critical_fields.
+    7. Keep executive_summary concise and technical_facts concrete.
+
+    Source document text:
+    {document_text}
+
+shallow_summary_prompt:
+  system: |
+    /no_think
+
+  human: |
+    You are a strict EPC summarizer for text-only extraction mode.
+    Output a single valid JSON object only, following SummaryRecordV1 exactly:
+    {
+      "schema_version": "korda.summary.v1",
+      "document_identity": {
+        "document_type": string|null,
+        "document_number": string|null,
+        "drawing_number": string|null,
+        "revision": string|null,
+        "title": string|null,
+        "issuer": string|null,
+        "approval_status": string|null,
+        "date_refs": string[]
+      },
+      "executive_summary": string,
+      "technical_facts": string[],
+      "constraints_and_assumptions": string[],
+      "risks_and_open_items": string[],
+      "codes_and_standards_verbatim": string[],
+      "quality": {
+        "confidence": number_0_to_1,
+        "missing_critical_fields": string[],
+        "ambiguities": string[]
+      }
+    }
+
+    Rules:
+    1. JSON object only.
+    2. No hallucinated standards, tags, IDs, or revision values.
+    3. Standards must be verbatim as seen.
+    4. Unknown values must be null or [].
+    5. Provide explicit ambiguities and missing critical fields.
+
+    Source document text:
+    {document_text}
+
+iterative_summary_prompt:
+  system: |
+    /no_think
+
+  human: |
+    You maintain a strict JSON EPC summary contract.
+    Inputs:
+    - previous_summary: existing SummaryRecordV1 JSON object.
+    - new_chunk: additional source text to merge.
+
+    Return one valid JSON object (SummaryRecordV1) only.
+    Do not emit markdown or commentary.
+
+    Merge rules:
+    1. Keep schema_version as "korda.summary.v1".
+    2. Preserve previously extracted facts unless contradicted by stronger evidence in new_chunk.
+    3. Append net-new technical_facts, constraints, risks, and verbatim standards.
+    4. Keep codes_and_standards_verbatim exact; never normalize.
+    5. Keep unknown fields as null; track unresolved uncertainty in quality.ambiguities.
+    6. Update quality.confidence based on combined evidence.
+    7. Keep quality.missing_critical_fields current.
+
+    previous_summary:
+    {previous_summary}
+
+    new_chunk:
+    {new_chunk}
+
+image_captioning_prompt:
+  system: |
+    /no_think
+
+  human: |
+    You are a strict EPC visual extraction engine.
+    Output one valid JSON object only, exactly in this schema:
+    {
+      "schema_version": "korda.caption.v1",
+      "artifact_type": "drawing|pid|datasheet|photo|chart|table|diagram|other|unknown",
+      "discipline": "civil|structural|mechanical|piping|process|electrical|instrumentation|controls|hse|procurement|doc_control|unknown",
+      "primary_subject": string,
+      "document_number": string|null,
+      "entities": {
+        "equipment_tags": string[],
+        "instrument_tags": string[],
+        "line_numbers": string[],
+        "drawing_numbers": string[],
+        "revision_ids": string[],
+        "specification_ids": string[],
+        "standard_references": string[]
+      },
+      "measurements": [
+        {"name": string, "value": string|number|null, "unit": string|null, "context": string|null}
+      ],
+      "quality": {"ocr_legibility": number_0_to_1, "confidence": number_0_to_1},
+      "warnings": string[]
+    }
+
+    Rules:
+    1. JSON object only, no markdown.
+    2. Never infer unseen values.
+    3. Capture standards/codes verbatim exactly as seen.
+    4. If no evidence, use null or [].
+    5. Include warning strings for ambiguity and low legibility.
+
+metadata_extraction_prompt:
+  system: |
+    /no_think
+
+  human: |
+    You are extracting document-level EPC metadata for indexing.
+    Output one strict JSON object only with this schema:
+    {
+      "schema_version": "korda.metadata.v1",
+      "project_id": string|null,
+      "project_name": string|null,
+      "discipline": string|null,
+      "document_type": string|null,
+      "document_number": string|null,
+      "drawing_number": string|null,
+      "revision": string|null,
+      "revision_date": string|null,
+      "asset_tag": string|null,
+      "equipment_tag": string|null,
+      "line_number": string|null,
+      "instrument_tag": string|null,
+      "specification_id": string|null,
+      "vendor": string|null,
+      "approval_status": string|null,
+      "codes_standards": string[],
+      "source_quality_score": number_0_to_1|null,
+      "extraction_warnings": string[]
+    }
+
+    Rules:
+    1. JSON only.
+    2. Standards/codes must be verbatim.
+    3. Do not infer missing identifiers.
+    4. Use null or [] when evidence is absent.
+    5. Add uncertainty in extraction_warnings.
+
+    Source text:
+    {document_text}

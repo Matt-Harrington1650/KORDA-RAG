@@ -1,0 +1,73 @@
+{
+  "input_jsonl": "docs\\operations\\sample-corpus-calibration.jsonl",
+  "target_precision": 0.95,
+  "min_samples": 20,
+  "caption_thresholds": {
+    "datasheet": {
+      "status": "calibrated",
+      "samples": 45,
+      "recommended_threshold": 0.8889,
+      "estimated_precision": 1.0,
+      "estimated_recall": 0.7857,
+      "selected_support": 11
+    },
+    "drawing": {
+      "status": "calibrated",
+      "samples": 45,
+      "recommended_threshold": 0.8962,
+      "estimated_precision": 1.0,
+      "estimated_recall": 0.4091,
+      "selected_support": 9
+    },
+    "photo": {
+      "status": "calibrated",
+      "samples": 45,
+      "recommended_threshold": 0.7658,
+      "estimated_precision": 0.95,
+      "estimated_recall": 0.7308,
+      "selected_support": 20
+    },
+    "pid": {
+      "status": "calibrated",
+      "samples": 45,
+      "recommended_threshold": 0.8527,
+      "estimated_precision": 1.0,
+      "estimated_recall": 0.5238,
+      "selected_support": 11
+    }
+  },
+  "summary_thresholds": {
+    "datasheet": {
+      "status": "calibrated",
+      "samples": 45,
+      "recommended_threshold": 0.8989,
+      "estimated_precision": 1.0,
+      "estimated_recall": 0.4762,
+      "selected_support": 10
+    },
+    "drawing": {
+      "status": "calibrated",
+      "samples": 45,
+      "recommended_threshold": 0.9007,
+      "estimated_precision": 1.0,
+      "estimated_recall": 0.3333,
+      "selected_support": 8
+    },
+    "photo": {
+      "status": "calibrated",
+      "samples": 45,
+      "recommended_threshold": 0.8418,
+      "estimated_precision": 1.0,
+      "estimated_recall": 0.5,
+      "selected_support": 8
+    },
+    "pid": {
+      "status": "calibrated",
+      "samples": 45,
+      "recommended_threshold": 0.865,
+      "estimated_precision": 1.0,
+      "estimated_recall": 0.4545,
+      "selected_support": 10
+    }
+  }
+}

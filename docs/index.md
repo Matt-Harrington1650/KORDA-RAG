@@ -317,4 +317,11 @@ After you deploy the RAG blueprint, you can customize it for your use cases.
    Incident Runbooks <operations/incident-runbooks.md>
    Disaster Recovery Playbook <operations/dr-playbook.md>
    Promotion Gates <operations/promotion-gates.md>
+   Dev-Stage-Prod Verification Checklist <operations/dev-stage-prod-verification-checklist.md>
+   Strict Ingestion Observability <operations/strict-ingestion-observability.md>
+   WSL Docker Strict Runbook <operations/korda-rag-wsl-docker-strict-runbook.md>
+   NVIDIA Quickstart (KORDA Adaptation) <operations/nvidia-blueprint-quickstart-korda.md>
+   Strict Ingestion CI Workflow <operations/strict-ingestion-ci.md>
+   Threshold Calibration <operations/threshold-calibration.md>
+   Operator Cheat Sheet <operations/operator-cheat-sheet.md>
 ```

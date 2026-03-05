@@ -24,6 +24,7 @@ from langchain_core.documents import Document
 
 from nvidia_rag.utils.configuration import NvidiaRAGConfig
 from nvidia_rag.utils.summarization import (
+    _apply_strict_summary_contract,
     _batch_summaries_by_length,
     _combine_summaries_batch,
     _extract_content_from_element,
@@ -1438,3 +1439,131 @@ class TestGenerateDocumentSummaries:
             mock_process.assert_called_once()
             call_kwargs = mock_process.call_args[1]
             assert call_kwargs["prompts"] == custom_prompts
+
+
+class TestStrictSummaryContract:
+    """Test strict summary contract post-processing."""
+
+    def test_apply_strict_summary_contract_disabled(self):
+        """Raw summaries pass through when strict mode is disabled."""
+        config = NvidiaRAGConfig(ingestion_json_strict_mode=False)
+        raw_summary = "legacy plain text summary"
+
+        summary_text, summary_record, summary_json = _apply_strict_summary_contract(
+            raw_summary=raw_summary,
+            file_name="test.pdf",
+            config=config,
+        )
+
+        assert summary_text == raw_summary
+        assert summary_record is None
+        assert summary_json is None
+
+    def test_apply_strict_summary_contract_success(self):
+        """Strict mode converts SummaryRecordV1 JSON into compatibility fields."""
+        config = NvidiaRAGConfig(
+            ingestion_json_strict_mode=True,
+            ingestion_summary_min_confidence=0.85,
+            ingestion_fail_on_missing_critical=True,
+        )
+        raw_summary = """{
+          "schema_version":"korda.summary.v1",
+          "document_identity":{
+            "document_type":"drawing",
+            "document_number":"DOC-1",
+            "drawing_number":"DRW-1",
+            "revision":"A",
+            "title":"GA Drawing",
+            "issuer":"KORDA",
+            "approval_status":"Approved",
+            "date_refs":["2025-11-01"]
+          },
+          "executive_summary":"General arrangement drawing summary.",
+          "technical_facts":["North pipe rack tie-in shown."],
+          "constraints_and_assumptions":[],
+          "risks_and_open_items":[],
+          "codes_and_standards_verbatim":["ASME B31.3"],
+          "quality":{"confidence":0.90,"missing_critical_fields":[],"ambiguities":[]}
+        }"""
+
+        summary_text, summary_record, summary_json = _apply_strict_summary_contract(
+            raw_summary=raw_summary,
+            file_name="test.pdf",
+            config=config,
+        )
+
+        assert "General arrangement drawing summary." in summary_text
+        assert "Technical facts:" in summary_text
+        assert summary_record["schema_version"] == "korda.summary.v1"
+        assert '"schema_version": "korda.summary.v1"' in summary_json
+
+    def test_apply_strict_summary_contract_rejects_missing_critical_fields(self):
+        """Strict mode fails closed when critical fields are flagged missing."""
+        config = NvidiaRAGConfig(
+            ingestion_json_strict_mode=True,
+            ingestion_summary_min_confidence=0.85,
+            ingestion_fail_on_missing_critical=True,
+        )
+        raw_summary = """{
+          "schema_version":"korda.summary.v1",
+          "document_identity":{
+            "document_type":"drawing",
+            "document_number":"DOC-1",
+            "drawing_number":"DRW-1",
+            "revision":"A",
+            "title":"GA Drawing",
+            "issuer":"KORDA",
+            "approval_status":"Approved",
+            "date_refs":["2025-11-01"]
+          },
+          "executive_summary":"General arrangement drawing summary.",
+          "technical_facts":[],
+          "constraints_and_assumptions":[],
+          "risks_and_open_items":[],
+          "codes_and_standards_verbatim":["ASME B31.3"],
+          "quality":{"confidence":0.90,"missing_critical_fields":["document_number"],"ambiguities":[]}
+        }"""
+
+        with pytest.raises(ValueError, match="fail-closed checks failed"):
+            _apply_strict_summary_contract(
+                raw_summary=raw_summary,
+                file_name="test.pdf",
+                config=config,
+            )
+
+    def test_apply_strict_summary_contract_uses_per_document_threshold(self):
+        """Per-document-type threshold overrides global summary threshold."""
+        config = NvidiaRAGConfig(
+            ingestion_json_strict_mode=True,
+            ingestion_summary_min_confidence=0.95,
+            ingestion_summary_min_confidence_by_document_type={"drawing": 0.85},
+            ingestion_fail_on_missing_critical=True,
+        )
+        raw_summary = """{
+          "schema_version":"korda.summary.v1",
+          "document_identity":{
+            "document_type":"drawing",
+            "document_number":"DOC-1",
+            "drawing_number":"DRW-1",
+            "revision":"A",
+            "title":"GA Drawing",
+            "issuer":"KORDA",
+            "approval_status":"Approved",
+            "date_refs":["2025-11-01"]
+          },
+          "executive_summary":"General arrangement drawing summary.",
+          "technical_facts":["North pipe rack tie-in shown."],
+          "constraints_and_assumptions":[],
+          "risks_and_open_items":[],
+          "codes_and_standards_verbatim":["ASME B31.3"],
+          "quality":{"confidence":0.90,"missing_critical_fields":[],"ambiguities":[]}
+        }"""
+
+        summary_text, summary_record, _ = _apply_strict_summary_contract(
+            raw_summary=raw_summary,
+            file_name="test.pdf",
+            config=config,
+        )
+
+        assert "General arrangement drawing summary." in summary_text
+        assert summary_record["quality"]["confidence"] == 0.9

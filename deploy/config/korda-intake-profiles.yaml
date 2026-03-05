@@ -1,0 +1,73 @@
+profiles:
+  - schema_version: korda.intake_profile.v1
+    profile_id: epc_drawing_profile
+    description: "Engineering drawing profile with strict metadata requirements."
+    split_options:
+      chunk_size: 512
+      chunk_overlap: 150
+    generate_summary: true
+    required_metadata_fields:
+      - discipline
+      - document_number
+      - revision
+    allowed_extensions:
+      - .pdf
+      - .png
+      - .jpeg
+      - .tiff
+    strict_threshold_overrides:
+      drawing: 0.8962
+      pid: 0.8527
+
+  - schema_version: korda.intake_profile.v1
+    profile_id: datasheet_profile
+    description: "Datasheet profile focused on structured extraction."
+    split_options:
+      chunk_size: 700
+      chunk_overlap: 120
+    generate_summary: true
+    required_metadata_fields:
+      - vendor
+      - specification_id
+    allowed_extensions:
+      - .pdf
+      - .docx
+      - .xlsx
+    strict_threshold_overrides:
+      datasheet: 0.8889
+
+  - schema_version: korda.intake_profile.v1
+    profile_id: site_photo_profile
+    description: "Image-heavy profile for site photos and visual evidence."
+    split_options:
+      chunk_size: 400
+      chunk_overlap: 100
+    generate_summary: false
+    required_metadata_fields:
+      - asset_tag
+      - location
+    allowed_extensions:
+      - .png
+      - .jpeg
+      - .jpg
+      - .bmp
+      - .tiff
+    strict_threshold_overrides:
+      photo: 0.7658
+
+  - schema_version: korda.intake_profile.v1
+    profile_id: audio_walkthrough_profile
+    description: "Audio walkthrough profile for site inspections and operator notes."
+    split_options:
+      chunk_size: 512
+      chunk_overlap: 150
+    generate_summary: true
+    required_metadata_fields:
+      - discipline
+      - date
+    allowed_extensions:
+      - .mp3
+      - .wav
+      - .m4a
+    strict_threshold_overrides: {}
+

@@ -71,6 +71,10 @@ from nvidia_rag.utils.common import (
 )
 from nvidia_rag.utils.configuration import NvidiaRAGConfig
 from nvidia_rag.utils.health_models import IngestorHealthResponse
+from nvidia_rag.utils.ingestion_validation import (
+    parse_caption_record,
+    validate_caption_record,
+)
 from nvidia_rag.utils.llm import get_prompts
 from nvidia_rag.utils.metadata_validation import (
     SYSTEM_MANAGED_FIELDS,
@@ -78,6 +82,7 @@ from nvidia_rag.utils.metadata_validation import (
     MetadataSchema,
     MetadataValidator,
 )
+from nvidia_rag.utils.metadata_enrichment import extract_post_ingest_metadata
 from nvidia_rag.utils.minio_operator import (
     get_minio_operator,
     get_unique_thumbnail_id_collection_prefix,
@@ -124,6 +129,7 @@ class NvidiaRAGIngestor:
         mode: Mode | str = Mode.LIBRARY,
         config: NvidiaRAGConfig | None = None,
         prompts: str | dict | None = None,
+        metrics_client: Any = None,
     ):
         """Initialize NvidiaRAGIngestor with configuration.
 
@@ -151,6 +157,7 @@ class NvidiaRAGIngestor:
         self._background_tasks = set()
         self.config = config or NvidiaRAGConfig()
         self.prompts = get_prompts(prompts)
+        self.metrics_client = metrics_client
 
         # Initialize instance-based clients
         self.nv_ingest_client = get_nv_ingest_client(
@@ -638,6 +645,32 @@ class NvidiaRAGIngestor:
                 state_manager=state_manager,
             )
 
+            metadata_enrichment = await extract_post_ingest_metadata(
+                results=results,
+                filepaths=filepaths,
+                collection_name=collection_name,
+                config=self.config,
+                prompts=self.prompts,
+                metrics_client=getattr(self, "metrics_client", None),
+            )
+            state_manager.generated_metadata_records = metadata_enrichment.get(
+                "records_by_filename", {}
+            )
+            metadata_validation_errors = metadata_enrichment.get("validation_errors", [])
+            if metadata_validation_errors:
+                state_manager.validation_errors.extend(metadata_validation_errors)
+
+            metadata_failures = metadata_enrichment.get("failures", [])
+            if metadata_failures:
+                failures.extend(metadata_failures)
+
+            if state_manager.generated_metadata_records:
+                self.__persist_generated_metadata_records(
+                    vdb_op=vdb_op,
+                    collection_name=collection_name,
+                    records_by_filename=state_manager.generated_metadata_records,
+                )
+
             build_ingestion_response_start_time = time.time()
             response_data = await self.__build_ingestion_response(
                 results=results,
@@ -750,6 +783,9 @@ class NvidiaRAGIngestor:
 
         # Generate response dictionary
         uploaded_documents = []
+        generated_metadata_records = getattr(
+            state_manager, "generated_metadata_records", {}
+        )
         for filepath in filepaths:
             if os.path.basename(filepath) not in failures_filepaths:
                 doc_type_counts, _, total_elements, raw_text_elements_size = (
@@ -764,6 +800,15 @@ class NvidiaRAGIngestor:
                     total_elements=total_elements,
                     raw_text_elements_size=raw_text_elements_size,
                 )
+                generated_metadata_entry = generated_metadata_records.get(
+                    os.path.basename(filepath), {}
+                )
+                generated_metadata_record = generated_metadata_entry.get("record")
+                generated_metadata_json = generated_metadata_entry.get("json")
+                if generated_metadata_record:
+                    document_info["metadata_extraction"] = generated_metadata_record
+                if generated_metadata_json:
+                    document_info["metadata_extraction_json"] = generated_metadata_json
 
                 # Always add document info for each document
                 if not is_final_batch:
@@ -786,6 +831,10 @@ class NvidiaRAGIngestor:
                     },
                     "document_info": document_info,
                 }
+                if generated_metadata_record:
+                    uploaded_document["metadata"]["extracted_metadata"] = (
+                        generated_metadata_record
+                    )
                 uploaded_documents.append(uploaded_document)
 
         # Get current timestamp in ISO format
@@ -832,6 +881,7 @@ class NvidiaRAGIngestor:
                 config=self.config,
                 is_shallow=is_shallow,
                 prompts=self.prompts,
+                metrics_client=getattr(self, "metrics_client", None),
             )
 
             if stats["failed"] > 0:
@@ -845,6 +895,140 @@ class NvidiaRAGIngestor:
         except Exception as e:
             logger.error(
                 f"Summary batch failed for {collection_name}: {e}", exc_info=True
+            )
+
+    @staticmethod
+    def _get_filename_from_result_element(result_element: dict[str, Any]) -> str:
+        source_id = (
+            result_element.get("metadata", {})
+            .get("source_metadata", {})
+            .get("source_id", "")
+        )
+        return os.path.basename(source_id) if source_id else "unknown"
+
+    def _validate_caption_records(
+        self,
+        results: list[list[dict[str, Any]]],
+        filepaths: list[str],
+    ) -> tuple[list[dict[str, Any]], list[tuple[str, Exception]]]:
+        """Validate caption payloads against strict JSON contracts."""
+        if not self.config.ingestion_json_strict_mode:
+            return [], []
+
+        file_lookup = {os.path.basename(path): path for path in filepaths}
+        validation_errors: list[dict[str, Any]] = []
+        failure_messages: dict[str, set[str]] = defaultdict(set)
+        metrics_client = getattr(self, "metrics_client", None)
+        per_artifact_thresholds = getattr(
+            self.config, "ingestion_caption_min_confidence_by_artifact", {}
+        ) or {}
+
+        for result_list in results:
+            if not result_list:
+                continue
+
+            file_name = self._get_filename_from_result_element(result_list[0])
+            file_path = file_lookup.get(file_name, file_name)
+
+            for element in result_list:
+                if element.get("document_type") != "image":
+                    continue
+
+                metadata = element.get("metadata", {})
+                image_metadata = metadata.get("image_metadata", {})
+                caption_payload = image_metadata.get("caption")
+                if caption_payload is None:
+                    continue
+
+                try:
+                    caption_record = parse_caption_record(caption_payload)
+                    artifact_threshold = per_artifact_thresholds.get(
+                        caption_record.artifact_type.lower(),
+                        self.config.ingestion_caption_min_confidence,
+                    )
+                    rule_errors = validate_caption_record(
+                        caption_record,
+                        min_confidence=artifact_threshold,
+                        fail_on_missing_critical=self.config.ingestion_fail_on_missing_critical,
+                    )
+                    if rule_errors:
+                        raise ValueError("; ".join(rule_errors))
+                    if metrics_client is not None:
+                        metrics_client.update_strict_validation_record(
+                            phase="caption",
+                            outcome="success",
+                            error_code="NONE",
+                            document_class=caption_record.artifact_type,
+                        )
+                except Exception as exc:
+                    page_number = (
+                        metadata.get("content_metadata", {}).get("page_number")
+                    )
+                    error_text = str(exc)
+                    validation_errors.append(
+                        {
+                            "code": "CAPTION_SCHEMA_VALIDATION_FAILED",
+                            "message": "CaptionRecordV1 validation failed",
+                            "metadata": {
+                                "filename": file_name,
+                                "page_number": page_number,
+                                "error": error_text,
+                            },
+                        }
+                    )
+                    if metrics_client is not None:
+                        metrics_client.update_strict_validation_record(
+                            phase="caption",
+                            outcome="failure",
+                            error_code="CAPTION_SCHEMA_VALIDATION_FAILED",
+                            document_class="unknown",
+                        )
+                    failure_messages[file_path].add(error_text)
+
+        failures: list[tuple[str, Exception]] = []
+        if self.config.ingestion_fail_on_missing_critical:
+            for failed_path, errors in failure_messages.items():
+                failures.append(
+                    (
+                        failed_path,
+                        ValueError(
+                            "Caption validation failed: " + " | ".join(sorted(errors))
+                        ),
+                    )
+                )
+
+        return validation_errors, failures
+
+    @trace_function("ingestor.main.persist_generated_metadata_records", tracer=TRACER)
+    def __persist_generated_metadata_records(
+        self,
+        vdb_op: VDBRag,
+        collection_name: str,
+        records_by_filename: dict[str, dict[str, Any]],
+    ) -> None:
+        """Persist generated metadata records into document_info entries."""
+        for file_name, metadata_entry in records_by_filename.items():
+            metadata_record = metadata_entry.get("record")
+            metadata_json = metadata_entry.get("json")
+            if not metadata_record:
+                continue
+
+            existing_info = vdb_op.get_document_info(
+                info_type="document",
+                collection_name=collection_name,
+                document_name=file_name,
+            )
+            updated_info = dict(existing_info or {})
+            updated_info["metadata_extraction"] = metadata_record
+            if metadata_json:
+                updated_info["metadata_extraction_json"] = metadata_json
+            updated_info["metadata_extraction_updated_at"] = get_current_timestamp()
+
+            vdb_op.add_document_info(
+                info_type="document",
+                collection_name=collection_name,
+                document_name=file_name,
+                info_value=updated_info,
             )
 
     @trace_function("ingestor.main.update_documents", tracer=TRACER)
@@ -2383,11 +2567,43 @@ class NvidiaRAGIngestor:
             state_manager=state_manager,
         )
 
+        caption_validation_errors, caption_validation_failures = (
+            self._validate_caption_records(
+                results=results,
+                filepaths=filtered_filepaths,
+            )
+        )
+        if caption_validation_errors:
+            logger.warning(
+                "Detected %d caption validation errors in batch %d",
+                len(caption_validation_errors),
+                batch_number,
+            )
+            if state_manager is not None:
+                state_manager.validation_errors.extend(caption_validation_errors)
+        if caption_validation_failures:
+            failures.extend(caption_validation_failures)
+
+        failed_caption_filenames = {
+            os.path.basename(str(failure[0])) for failure in caption_validation_failures
+        }
+        summary_results = (
+            [
+                result_list
+                for result_list in results
+                if result_list
+                and self._get_filename_from_result_element(result_list[0])
+                not in failed_caption_filenames
+            ]
+            if failed_caption_filenames
+            else results
+        )
+
         # Start summary task only if not shallow_summary (already started in batch wrapper)
         if generate_summary and not shallow_summary:
             task = asyncio.create_task(
                 self.__ingest_document_summary(
-                    results,
+                    summary_results,
                     collection_name=collection_name,
                     page_filter=page_filter,
                     summarization_strategy=summarization_strategy,

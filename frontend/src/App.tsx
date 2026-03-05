@@ -22,6 +22,7 @@ import SettingsPage from "./pages/SettingsPage";
 import { ToastContainer } from "./components/ui/ToastContainer";
 import { useAppHealthStatus, useServerDefaultsInitialization } from "./store/useSettingsStore";
 import { useHealthMonitoring } from "./hooks/useHealthMonitoring";
+import { useGatewayStartupInitialization } from "./hooks/useGatewayStartup";
 
 /**
  * React Query client configuration with default options.
@@ -49,6 +50,9 @@ function AppContent() {
   
   // Monitor service health and create notifications for issues
   useHealthMonitoring();
+
+  // App-open startup handshake with gateway for auto-bootstrap and default collection selection.
+  useGatewayStartupInitialization();
   
   return (
     <Layout>

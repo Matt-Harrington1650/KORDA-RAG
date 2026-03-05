@@ -19,6 +19,71 @@ import { useChatStream } from "../hooks/useChatStream";
 import { useStreamingStore } from "../store/useStreamingStore";
 import type { GenerateRequest } from "../types/requests";
 
+const FALLBACK_STATUS_CODES = new Set([404, 502, 503, 504]);
+
+function buildGatewayPayload(request: GenerateRequest) {
+  const {
+    messages,
+    use_knowledge_base,
+    collection_names,
+    enable_citations,
+    enable_reranker,
+    ...ragOverrides
+  } = request;
+
+  const rag_request_overrides = Object.fromEntries(
+    Object.entries(ragOverrides).filter(([, value]) => value !== undefined)
+  );
+
+  return {
+    schema_version: "korda.chat.request.v1",
+    mode: "auto",
+    messages,
+    use_knowledge_base,
+    collection_names: collection_names ?? [],
+    enable_citations: enable_citations ?? true,
+    enable_reranker,
+    requested_tools: [],
+    rag_request_overrides,
+  };
+}
+
+class GatewayNoFallbackError extends Error {}
+
+function mapGatewayCitations(citations: unknown): Array<{
+  text: string;
+  source: string;
+  document_type: "text" | "image" | "table" | "chart";
+  score?: number | string;
+}> {
+  if (!Array.isArray(citations)) {
+    return [];
+  }
+  return citations.map((entry: Record<string, unknown>) => ({
+    text: String(entry.content || entry.text || ""),
+    source: String(entry.document_name || entry.source || "Unknown"),
+    document_type: ["text", "image", "table", "chart"].includes(String(entry.document_type))
+      ? (entry.document_type as "text" | "image" | "table" | "chart")
+      : "text",
+    score: entry.score as number | string | undefined,
+  }));
+}
+
+async function extractErrorMessage(res: Response, fallback: string): Promise<string> {
+  try {
+    const payload = await res.json();
+    if (typeof payload?.detail === "string") {
+      return payload.detail;
+    }
+    if (typeof payload?.message === "string") {
+      return payload.message;
+    }
+  } catch {
+    // ignore JSON parse errors
+  }
+  return fallback;
+}
+
 /**
  * Arguments for sending a message.
  */
@@ -55,6 +120,47 @@ export const useSendMessage = () => {
       setStreaming(true, assistantId);
       const controller = startStream();
 
+      let shouldFallback = false;
+
+      try {
+        const gatewayRes = await fetch(`/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(buildGatewayPayload(request)),
+          signal: controller.signal,
+        });
+
+        if (gatewayRes.ok) {
+          const gatewayData = await gatewayRes.json();
+          updateMessage(assistantId, {
+            content: String(gatewayData.answer || ""),
+            citations: mapGatewayCitations(gatewayData.citations),
+          });
+          clearStreaming();
+          return;
+        }
+
+        if (FALLBACK_STATUS_CODES.has(gatewayRes.status)) {
+          shouldFallback = true;
+        } else {
+          const errorMessage = await extractErrorMessage(gatewayRes, "Gateway chat request failed");
+          throw new GatewayNoFallbackError(errorMessage);
+        }
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          throw error;
+        }
+        if (error instanceof GatewayNoFallbackError) {
+          throw error;
+        }
+        shouldFallback = true;
+      }
+
+      if (!shouldFallback) {
+        clearStreaming();
+        return;
+      }
+
       const res = await fetch(`/api/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -62,11 +168,7 @@ export const useSendMessage = () => {
         signal: controller.signal,
       });
 
-      await processStream(
-        res,
-        assistantId,
-        updateMessage
-      );
+      await processStream(res, assistantId, updateMessage);
       
       clearStreaming();
     },

@@ -10,6 +10,12 @@ vi.mock('../../store/useNotificationStore', () => ({
   })
 }));
 
+vi.mock('../../store/useCollectionConfigStore', () => ({
+  useCollectionConfigStore: () => ({
+    getConfig: () => ({ generateSummary: true }),
+  }),
+}));
+
 // Mock fetch globally
 global.fetch = vi.fn();
 
@@ -174,7 +180,7 @@ describe('useUploadDocuments', () => {
     });
     
     expect(mockFetch).toHaveBeenCalledWith(
-      '/api/documents?blocking=false',
+      '/api/intake/upload',
       expect.objectContaining({
         method: 'POST',
         body: expect.any(FormData)
@@ -186,7 +192,15 @@ describe('useUploadDocuments', () => {
     const formData = callArgs[1].body as FormData;
     
     expect(formData.get('documents')).toBe(testFile);
-    expect(formData.get('data')).toBe(JSON.stringify({ ...metadata, generate_summary: true }));
+    expect(formData.get('data')).toBe(
+      JSON.stringify({
+        profile_id: 'epc_drawing_profile',
+        collection_name: 'test-collection',
+        blocking: false,
+        custom_metadata: [],
+        generate_summary_override: true,
+      })
+    );
   });
 
   it('should add task notification on successful upload', async () => {

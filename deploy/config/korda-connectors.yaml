@@ -1,0 +1,9 @@
+connectors:
+  - connector_id: local-epc-drop
+    enabled: false
+    source_type: filesystem
+    source_uri: /tmp-data/intake-drop
+    profile_id: epc_drawing_profile
+    collection_name: korda-epc-default-dev
+    file_glob: "**/*"
+    max_files_per_run: 200

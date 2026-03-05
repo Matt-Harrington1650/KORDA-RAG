@@ -46,6 +46,11 @@ def Field(default=None, *, env: str = None, description: str = None, **kwargs):
     if description:
         kwargs["description"] = description
 
+    # Pydantic does not allow passing both default and default_factory.
+    # Preserve native semantics by forwarding only the explicit factory case.
+    if "default_factory" in kwargs:
+        return PydanticField(**kwargs)
+
     return PydanticField(default=default, **kwargs)
 
 
@@ -946,6 +951,70 @@ class MetadataConfig(_ConfigBase):
         env="APP_METADATA_ALLOWPARTIALFILTERING",
         description="Allow partial matches in metadata filtering",
     )
+    enable_post_ingest_enrichment: bool = Field(
+        default=False,
+        env="ENABLE_METADATA_ENRICHMENT",
+        description="Enable post-ingestion metadata extraction and enrichment worker",
+    )
+    extraction_model_name: str = Field(
+        default="nvidia/llama-3.3-nemotron-super-49b-v1.5",
+        env="METADATA_EXTRACTION_LLM",
+        description="Model for post-ingestion metadata extraction",
+    )
+    extraction_server_url: str = Field(
+        default="",
+        env="METADATA_EXTRACTION_LLM_SERVERURL",
+        description="Optional endpoint URL for metadata extraction model",
+    )
+    extraction_temperature: float = Field(
+        default=0.1,
+        env="METADATA_EXTRACTION_LLM_TEMPERATURE",
+        description="Sampling temperature for metadata extraction model",
+    )
+    extraction_top_p: float = Field(
+        default=1.0,
+        env="METADATA_EXTRACTION_LLM_TOP_P",
+        description="Nucleus sampling top-p for metadata extraction model",
+    )
+    max_input_chars: int = Field(
+        default=24000,
+        env="METADATA_EXTRACTION_MAX_INPUT_CHARS",
+        description="Maximum extracted document text length passed to metadata extraction",
+    )
+    max_parallelization: int = Field(
+        default=8,
+        env="METADATA_EXTRACTION_MAX_PARALLELIZATION",
+        description="Maximum concurrent metadata extraction tasks",
+    )
+    min_source_quality_score: float = Field(
+        default=0.75,
+        env="METADATA_EXTRACTION_MIN_SOURCE_QUALITY",
+        description="Minimum source_quality_score accepted for strict metadata extraction",
+    )
+    api_key: SecretStr | None = Field(
+        default=None,
+        env="METADATA_EXTRACTION_APIKEY",
+        description="API key for metadata extraction service (overrides global key)",
+    )
+
+    @field_validator("extraction_server_url", mode="before")
+    @classmethod
+    def normalize_url(cls, v: Any) -> Any:
+        """Normalize URL fields by stripping whitespace/quotes and adding scheme."""
+        if isinstance(v, str):
+            v = v.strip().strip('"').strip("'")
+            if v and not v.startswith(("http://", "https://")):
+                return f"http://{v}"
+        return v
+
+    @field_validator("min_source_quality_score")
+    @classmethod
+    def validate_min_source_quality_score(cls, v: float) -> float:
+        if not (0.0 <= v <= 1.0):
+            raise ValueError(
+                f"min_source_quality_score must be between 0.0 and 1.0, got {v}"
+            )
+        return v
 
 
 class QueryDecompositionConfig(_ConfigBase):
@@ -1079,6 +1148,54 @@ class NvidiaRAGConfig(_ConfigBase):
         env="RERANKER_CONFIDENCE_THRESHOLD",
         description="Default confidence threshold for reranker scores",
     )
+    ingestion_json_strict_mode: bool = Field(
+        default=False,
+        env="INGESTION_JSON_STRICT_MODE",
+        description=(
+            "Enable strict JSON validation for ingestion caption/summary prompt outputs. "
+            "When enabled, invalid structured outputs are fail-closed."
+        ),
+    )
+    ingestion_caption_min_confidence: float = Field(
+        default=0.80,
+        env="INGESTION_CAPTION_MIN_CONFIDENCE",
+        description=(
+            "Minimum caption confidence for critical engineering artifacts "
+            "(drawing/pid/datasheet) when strict ingestion validation is enabled."
+        ),
+    )
+    ingestion_summary_min_confidence: float = Field(
+        default=0.85,
+        env="INGESTION_SUMMARY_MIN_CONFIDENCE",
+        description=(
+            "Minimum summary confidence for critical document classes when strict "
+            "ingestion validation is enabled."
+        ),
+    )
+    ingestion_caption_min_confidence_by_artifact: dict[str, float] = Field(
+        default_factory=dict,
+        env="INGESTION_CAPTION_MIN_CONFIDENCE_BY_ARTIFACT",
+        description=(
+            "Optional JSON/object map of caption confidence thresholds keyed by artifact type "
+            "(for example: {\"drawing\": 0.9, \"pid\": 0.88})."
+        ),
+    )
+    ingestion_summary_min_confidence_by_document_type: dict[str, float] = Field(
+        default_factory=dict,
+        env="INGESTION_SUMMARY_MIN_CONFIDENCE_BY_DOCUMENT_TYPE",
+        description=(
+            "Optional JSON/object map of summary confidence thresholds keyed by normalized "
+            "document type (for example: {\"drawing\": 0.9, \"pid\": 0.87})."
+        ),
+    )
+    ingestion_fail_on_missing_critical: bool = Field(
+        default=True,
+        env="INGESTION_FAIL_ON_MISSING_CRITICAL",
+        description=(
+            "When true and strict ingestion validation is enabled, missing critical "
+            "fields fail ingestion/summarization instead of warning."
+        ),
+    )
     temp_dir: str = Field(
         default="./tmp-data",
         env="TEMP_DIR",
@@ -1094,6 +1211,59 @@ class NvidiaRAGConfig(_ConfigBase):
                 "The confidence threshold represents the minimum relevance score required for documents to be included."
             )
         return v
+
+    @field_validator(
+        "ingestion_caption_min_confidence",
+        "ingestion_summary_min_confidence",
+    )
+    @classmethod
+    def validate_ingestion_confidence_thresholds(cls, v: float) -> float:
+        if not (0.0 <= v <= 1.0):
+            raise ValueError(
+                f"Ingestion confidence thresholds must be between 0.0 and 1.0, got {v}"
+            )
+        return v
+
+    @field_validator(
+        "ingestion_caption_min_confidence_by_artifact",
+        "ingestion_summary_min_confidence_by_document_type",
+        mode="before",
+    )
+    @classmethod
+    def parse_ingestion_per_class_thresholds(
+        cls, value: Any
+    ) -> dict[str, float]:
+        if value is None or value == "":
+            return {}
+
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    "Per-class ingestion thresholds must be a JSON object string"
+                ) from exc
+        elif isinstance(value, dict):
+            parsed = value
+        else:
+            raise ValueError(
+                "Per-class ingestion thresholds must be provided as dict or JSON object string"
+            )
+
+        normalized: dict[str, float] = {}
+        for key, raw_threshold in parsed.items():
+            try:
+                threshold = float(raw_threshold)
+            except Exception as exc:
+                raise ValueError(
+                    f"Per-class threshold for '{key}' must be numeric"
+                ) from exc
+            if not (0.0 <= threshold <= 1.0):
+                raise ValueError(
+                    f"Per-class threshold for '{key}' must be between 0.0 and 1.0, got {threshold}"
+                )
+            normalized[str(key).strip().lower()] = threshold
+        return normalized
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "NvidiaRAGConfig":

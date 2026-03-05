@@ -17,6 +17,9 @@ import { useState } from "react";
 import { useNotificationStore } from "../store/useNotificationStore";
 import { useCollectionConfigStore } from "../store/useCollectionConfigStore";
 
+const FALLBACK_STATUS_CODES = new Set([404, 502, 503, 504]);
+const DEFAULT_PROFILE_ID = "epc_drawing_profile";
+
 export function useUploadDocuments() {
   const { addTaskNotification } = useNotificationStore();
   const { getConfig } = useCollectionConfigStore();
@@ -33,16 +36,45 @@ export function useUploadDocuments() {
     const collectionName = String(data.metadata.collection_name);
     const collectionConfig = getConfig(collectionName);
     
-    formData.append("data", JSON.stringify({ ...data.metadata, generate_summary: collectionConfig.generateSummary }));
+    const gatewayPayload = {
+      profile_id: String(data.metadata.profile_id || DEFAULT_PROFILE_ID),
+      collection_name: collectionName,
+      blocking: Boolean(data.metadata.blocking ?? false),
+      custom_metadata: Array.isArray(data.metadata.custom_metadata) ? data.metadata.custom_metadata : [],
+      generate_summary_override: collectionConfig.generateSummary,
+    };
+    formData.append("data", JSON.stringify(gatewayPayload));
 
-    fetch(`/api/documents?blocking=false`, {
+    const fallbackFormData = new FormData();
+    data.files.forEach((file) => {
+      fallbackFormData.append("documents", file);
+    });
+    fallbackFormData.append(
+      "data",
+      JSON.stringify({ ...data.metadata, generate_summary: collectionConfig.generateSummary })
+    );
+
+    fetch(`/api/intake/upload`, {
       method: "POST",
       body: formData,
     })
       .then(async (res) => {
-        if (!res.ok) throw new Error("Failed to upload documents");
-        const responseData = await res.json();
-        
+        if (!res.ok) {
+          if (!FALLBACK_STATUS_CODES.has(res.status)) {
+            throw new Error("Failed to upload documents");
+          }
+          const fallbackResponse = await fetch(`/api/documents?blocking=false`, {
+            method: "POST",
+            body: fallbackFormData,
+          });
+          if (!fallbackResponse.ok) {
+            throw new Error("Failed to upload documents");
+          }
+          return fallbackResponse.json();
+        }
+        return res.json();
+      })
+      .then((responseData) => {
         if (responseData?.task_id) {
           const taskData = {
             id: responseData.task_id,
@@ -51,10 +83,10 @@ export function useUploadDocuments() {
             state: "PENDING" as const,
             created_at: new Date().toISOString(),
           };
-          
+
           addTaskNotification(taskData);
         }
-        
+
         options.onSuccess?.(responseData);
       })
       .catch((error) => {

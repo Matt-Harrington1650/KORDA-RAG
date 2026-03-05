@@ -134,6 +134,9 @@ spec:
             - name: prompt-volume
               mountPath: /prompt.yaml
               subPath: prompt.yaml
+            - name: prompt-volume
+              mountPath: /prompt-korda-epc.yaml
+              subPath: prompt-korda-epc.yaml
       volumes:
         - name: prompt-volume
           configMap:
