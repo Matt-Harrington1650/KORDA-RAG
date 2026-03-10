@@ -13,15 +13,15 @@ services:
     # start the server on port 8081 with 8 workers for improved latency on concurrent requests.
     command: --port 8081 --host 0.0.0.0 --workers 8
     volumes:
-      # Mount the prompt.yaml file to the container, path should be absolute
-      - ${PROMPT_CONFIG_FILE}:${PROMPT_CONFIG_FILE}
+      # Mount a host prompt file to a stable in-container path for cross-platform compatibility
+      - ${PROMPT_CONFIG_FILE_HOST:-../../src/nvidia_rag/rag_server/prompt.yaml}:/prompt.yaml:ro
     # Common customizations to the pipeline can be controlled using env variables
     environment:
       # Path to example directory relative to root
       EXAMPLE_PATH: './nvidia_rag/rag_server'
 
-      # Absolute path to custom prompt.yaml file
-      PROMPT_CONFIG_FILE: ${PROMPT_CONFIG_FILE:-/prompt.yaml}
+      # In-container prompt file path
+      PROMPT_CONFIG_FILE: /prompt.yaml
 
       ##===MINIO specific configurations which is used to store the multimodal base64 content===
       MINIO_ENDPOINT: "minio:9010"

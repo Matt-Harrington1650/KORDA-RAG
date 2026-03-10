@@ -14,8 +14,8 @@ services:
     command: --port 8082 --host 0.0.0.0 --workers 1
 
     volumes:
-      # Mount the prompt.yaml file to the container, path should be absolute
-      - ${PROMPT_CONFIG_FILE}:${PROMPT_CONFIG_FILE}
+      # Mount a host prompt file to a stable in-container path for cross-platform compatibility
+      - ${PROMPT_CONFIG_FILE_HOST:-../../src/nvidia_rag/rag_server/prompt.yaml}:/prompt.yaml:ro
       # Please mount the volume to the container to the path specified here
       - ${INGESTOR_SERVER_EXTERNAL_VOLUME_MOUNT:-./volumes/ingestor-server}:${INGESTOR_SERVER_DATA_DIR:-/data/}
 
@@ -24,8 +24,8 @@ services:
       # Path to example directory relative to root
       EXAMPLE_PATH: 'src/nvidia_rag/ingestor_server'
 
-      # Absolute path to custom prompt.yaml file
-      PROMPT_CONFIG_FILE: ${PROMPT_CONFIG_FILE:-/prompt.yaml}
+      # In-container prompt file path
+      PROMPT_CONFIG_FILE: /prompt.yaml
 
       ##===Vector DB specific configurations===
       # URL on which vectorstore is hosted
@@ -202,10 +202,10 @@ services:
       #- MESSAGE_CLIENT_HOST=0.0.0.0
       #- MESSAGE_CLIENT_PORT=7671
       #- MESSAGE_CLIENT_TYPE=simple # Configure the ingest service to use the simple broker
-      # Message client for production
-      - MESSAGE_CLIENT_HOST=redis
-      - MESSAGE_CLIENT_PORT=6379
-      - MESSAGE_CLIENT_TYPE=redis
+      # Message client defaults to Redis; override via NVINGEST_MESSAGE_CLIENT_* if needed.
+      - MESSAGE_CLIENT_HOST=${NVINGEST_MESSAGE_CLIENT_HOST:-redis}
+      - MESSAGE_CLIENT_PORT=${NVINGEST_MESSAGE_CLIENT_PORT:-6379}
+      - MESSAGE_CLIENT_TYPE=${NVINGEST_MESSAGE_CLIENT_TYPE:-redis}
       - MINIO_BUCKET=${MINIO_BUCKET:-${NVINGEST_MINIO_BUCKET:-nv-ingest}}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
